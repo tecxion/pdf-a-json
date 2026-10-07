@@ -183,6 +183,31 @@ def _json_response(payload: dict, filename: str) -> Response:
     )
 
 
+def _zip_response(results: list[tuple[str, dict]], errors: list[dict]) -> Response:
+    buffer = io.BytesIO()
+    used: set[str] = set()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for original, payload in results:
+            name = _safe_name(original, ".json")
+            if name in used:  # dos subidas con el mismo nombre
+                stem = Path(name).stem
+                index = 2
+                while f"{stem}_{index}.json" in used:
+                    index += 1
+                name = f"{stem}_{index}.json"
+            used.add(name)
+            archive.writestr(name, json.dumps(payload, ensure_ascii=False, indent=2))
+        if errors:
+            archive.writestr(
+                "_errors.json", json.dumps(errors, ensure_ascii=False, indent=2)
+            )
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={"content-disposition": 'attachment; filename="pdf2json.zip"'},
+    )
+
+
 # --- aplicación ---------------------------------------------------------------
 
 
@@ -255,16 +280,29 @@ def convert(
 
     tmpdir = Path(tempfile.mkdtemp(prefix=TMP_PREFIX))
     try:
-        upload = files[0]
-        source = tmpdir / "0.pdf"
-        try:
-            _save_upload(upload, source)
-            payload = _run_conversion(source, mode, rules)
-        except ConvertError as exc:
-            return _error(request, str(exc), exc.status)
-        except Exception as exc:  # noqa: BLE001 - frontera: nada sale sin limpiar
-            message, status = _describe(exc)
-            return _error(request, message, status)
-        return _json_response(payload, _safe_name(upload.filename, ".json"))
+        results: list[tuple[str, dict]] = []
+        errors: list[dict] = []
+
+        for index, upload in enumerate(files):
+            source = tmpdir / f"{index}.pdf"
+            try:
+                _save_upload(upload, source)
+                results.append((upload.filename, _run_conversion(source, mode, rules)))
+            except ConvertError as exc:
+                if len(files) == 1:
+                    return _error(request, str(exc), exc.status)
+                errors.append({"filename": upload.filename, "error": str(exc)})
+            except Exception as exc:  # noqa: BLE001 - frontera por fichero
+                message, status = _describe(exc)
+                if len(files) == 1:
+                    return _error(request, message, status)
+                errors.append({"filename": upload.filename, "error": message})
+            finally:
+                source.unlink(missing_ok=True)  # borra cuanto antes, no al final
+
+        if len(files) == 1 and results:
+            original, payload = results[0]
+            return _json_response(payload, _safe_name(original, ".json"))
+        return _zip_response(results, errors)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)

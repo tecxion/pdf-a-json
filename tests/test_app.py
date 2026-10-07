@@ -1,6 +1,8 @@
 import glob
+import io
 import json
 import os
+import zipfile
 import tempfile
 from pathlib import Path
 
@@ -8,6 +10,17 @@ import pytest
 from fastapi.testclient import TestClient
 
 from pdf2json import app as app_module
+
+
+@pytest.fixture(autouse=True)
+def limitador_limpio():
+    """El rate limit cuenta por IP y TestClient siempre usa la misma.
+
+    Sin este reinicio, los últimos tests del fichero reciben 429 por culpa de las
+    peticiones de los anteriores. El límite en sí se prueba aparte.
+    """
+    app_module.limiter.reset()
+    yield
 
 
 @pytest.fixture
@@ -185,3 +198,64 @@ def test_safe_name_no_deja_escapar_separadores():
         assert "/" not in salida
         assert "\\" not in salida
         assert salida.endswith(".json")
+
+
+def test_convert_dos_pdf_devuelve_zip(client, make_pdf):
+    uno = make_pdf("uno.pdf", [[("Uno", 11, False)]])
+    dos = make_pdf("dos.pdf", [[("Dos", 11, False)]])
+
+    response = client.post(
+        "/convert", data={"mode": "raw"}, files=[upload(uno), upload(dos)]
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/zip")
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        assert sorted(archive.namelist()) == ["dos.json", "uno.json"]
+        body = json.loads(archive.read("uno.json"))
+        assert "Uno" in body["pages"][0]["text"]
+    assert not tmp_dirs()
+
+
+def test_convert_lote_con_un_pdf_roto_sigue_adelante(client, make_pdf, tmp_path):
+    bueno = make_pdf("bueno.pdf", [[("Bien", 11, False)]])
+    roto = tmp_path / "roto.pdf"
+    roto.write_bytes(b"%PDF-1.7\nbasura\n")
+
+    response = client.post(
+        "/convert", data={"mode": "raw"}, files=[upload(bueno), upload(roto)]
+    )
+
+    assert response.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        assert "bueno.json" in archive.namelist()
+        assert "_errors.json" in archive.namelist()
+        errors = json.loads(archive.read("_errors.json"))
+        assert errors[0]["filename"] == "roto.pdf"
+        assert errors[0]["error"]
+    assert not tmp_dirs()
+
+
+def test_convert_lote_con_nombres_repetidos_no_pisa_entradas(client, make_pdf):
+    uno = make_pdf("mismo.pdf", [[("A", 11, False)]])
+
+    response = client.post(
+        "/convert", data={"mode": "raw"}, files=[upload(uno), upload(uno)]
+    )
+
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        assert sorted(archive.namelist()) == ["mismo.json", "mismo_2.json"]
+    assert not tmp_dirs()
+
+
+def test_convert_demasiados_ficheros_devuelve_413(client, make_pdf, monkeypatch):
+    monkeypatch.setattr(app_module, "MAX_FILES", 1)
+    uno = make_pdf("uno.pdf", [[("A", 11, False)]])
+    dos = make_pdf("dos.pdf", [[("B", 11, False)]])
+
+    response = client.post(
+        "/convert", data={"mode": "raw"}, files=[upload(uno), upload(dos)]
+    )
+
+    assert response.status_code == 413
+    assert not tmp_dirs()
