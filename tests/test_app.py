@@ -420,3 +420,32 @@ def test_convert_schema_con_varias_reglas(client, make_pdf):
     }
     assert body["unmatched"] == ["ausente"]
     assert not tmp_dirs()
+
+
+def test_los_mensajes_de_error_escapan_la_entrada_del_usuario(client, make_pdf):
+    """El modo y el nombre de la regla se devuelven en el HTML de error: XSS si no."""
+    path = make_pdf("uno.pdf", [[("texto", 11, False)]])
+    ataque = "<script>alert(1)</script>"
+
+    respuesta_modo = client.post(
+        "/convert", data={"mode": ataque}, files=[upload(path)]
+    )
+
+    assert respuesta_modo.status_code == 422
+    assert "<script>" not in respuesta_modo.text
+    assert "&lt;script&gt;" in respuesta_modo.text
+
+    app_module.limiter.reset()
+    respuesta_regla = client.post(
+        "/convert",
+        data={
+            "mode": "schema",
+            "rule_name": ataque,
+            "rule_kind": "regex",
+            "rule_pattern": "(sin cerrar",
+        },
+        files=[upload(path)],
+    )
+
+    assert respuesta_regla.status_code == 422
+    assert "<script>" not in respuesta_regla.text
