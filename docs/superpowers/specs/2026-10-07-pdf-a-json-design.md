@@ -84,9 +84,9 @@ Producido por `extract.parse(path) -> Doc`. Dataclasses:
 
 ```python
 @dataclass
-class Block:
+class Line:
     text: str
-    size: float        # tamaño de fuente dominante del bloque
+    size: float        # tamaño de fuente mayor de la línea
     bold: bool
     bbox: tuple[float, float, float, float]
 
@@ -98,7 +98,8 @@ class Table:
 @dataclass
 class Page:
     number: int        # 1-indexado
-    blocks: list[Block]
+    text: str          # texto de la página tal cual lo da PyMuPDF
+    lines: list[Line]
     tables: list[Table]
     has_text: bool     # False si la página no tiene ningún carácter extraíble
 
@@ -108,6 +109,11 @@ class Doc:
                        # creation_date, mod_date, page_count, encrypted
     pages: list[Page]
 ```
+
+La unidad es la línea y no el bloque de PyMuPDF: el bloque une un título con el párrafo
+que le sigue cuando están cerca, lo que rompe la detección de títulos del modo `layout`.
+`Page.text` existe para que el modo `raw` devuelva el texto más fiel posible sin
+recomponerlo a partir de las líneas.
 
 `has_text=False` es la señal de "probablemente escaneada". Se calcula por página, no por
 documento, porque los PDF legales mezclan páginas digitales con anexos escaneados.
