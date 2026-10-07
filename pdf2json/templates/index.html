@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>pdf2json</title>
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <main>
+      <h1>PDF a JSON</h1>
+      <form action="/convert" method="post" enctype="multipart/form-data">
+        <input type="file" name="files" accept="application/pdf" multiple required />
+        <select name="mode">
+          <option value="raw">Texto por página</option>
+          <option value="layout">Estructurado por secciones</option>
+          <option value="schema">Campos</option>
+        </select>
+        <button type="submit">Convertir</button>
+      </form>
+    </main>
+  </body>
+</html>
