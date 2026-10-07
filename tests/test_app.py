@@ -362,3 +362,61 @@ def test_reset_pool_mata_a_los_workers():
     for worker in workers:
         worker.join(timeout=5)
         assert not worker.is_alive()
+
+
+def test_fields_row_devuelve_una_fila_vacia(client):
+    response = client.get("/fields/row")
+
+    assert response.status_code == 200
+    assert 'name="rule_name"' in response.text
+    assert 'name="rule_pattern"' in response.text
+
+
+def test_fields_template_precarga_las_reglas(client):
+    response = client.get("/fields/template/ley_boe")
+
+    assert response.status_code == 200
+    assert "numero" in response.text
+    assert "boe_id" in response.text
+
+
+def test_fields_template_desconocida_devuelve_404(client):
+    assert client.get("/fields/template/inventada").status_code == 404
+
+
+def test_index_lista_las_plantillas_y_la_nota_de_privacidad(client):
+    body = client.get("/").text
+
+    assert "Ley / BOE" in body
+    assert "Factura" in body
+    assert "no se guarda" in body.lower()
+
+
+def test_convert_schema_con_varias_reglas(client, make_pdf):
+    """El formulario manda campos repetidos; deben emparejarse por posición."""
+    path = make_pdf("ley.pdf", [[("Ley 12/2023 BOE-A-2023-12203", 11, False)]])
+
+    response = client.post(
+        "/convert",
+        data={
+            "mode": "schema",
+            "rule_name": ["numero", "boe_id", "ausente"],
+            "rule_kind": ["regex", "regex", "label"],
+            "rule_pattern": [
+                r"Ley\s+(\d+/\d{4})",
+                r"(BOE-[A-Z]-\d{4}-\d+)",
+                "No aparece",
+            ],
+        },
+        files=[upload(path)],
+    )
+
+    assert response.status_code == 200
+    body = json.loads(response.content)
+    assert body["fields"] == {
+        "numero": "12/2023",
+        "boe_id": "BOE-A-2023-12203",
+        "ausente": None,
+    }
+    assert body["unmatched"] == ["ausente"]
+    assert not tmp_dirs()

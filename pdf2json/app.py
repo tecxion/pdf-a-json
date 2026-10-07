@@ -316,3 +316,22 @@ def convert(
         return _zip_response(results, errors)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+@app.get("/fields/row", response_class=HTMLResponse)
+def fields_row(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "_fields.html",
+        {"rules": [{"name": "", "kind": "regex", "pattern": ""}]},
+    )
+
+
+@app.get("/fields/template/{name}", response_class=HTMLResponse)
+def fields_template(request: Request, name: str):
+    template = TEMPLATES.get(name)
+    if template is None:
+        return _error(request, f"Plantilla desconocida: {name}.", 404)
+    return templates.TemplateResponse(
+        request, "_fields.html", {"rules": template["rules"]}
+    )
