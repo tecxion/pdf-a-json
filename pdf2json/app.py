@@ -87,7 +87,17 @@ def _get_pool() -> ProcessPoolExecutor:
 def _reset_pool() -> None:
     global _pool
     if _pool is not None:
+        # shutdown(wait=False) deja de aceptar trabajo pero NO interrumpe al worker
+        # que ya está corriendo: un PDF patológico seguiría quemando CPU hasta
+        # terminar. Hay que matarlo a mano.
+        # ponytail: _processes es privado de ProcessPoolExecutor. El getattr deja
+        # que una versión futura de Python que lo renombre degrade al comportamiento
+        # anterior (worker abandonado) en vez de romper la petición.
+        workers = list(getattr(_pool, "_processes", {}).values())
         _pool.shutdown(wait=False, cancel_futures=True)
+        for worker in workers:
+            if worker.is_alive():
+                worker.kill()
     _pool = None
 
 

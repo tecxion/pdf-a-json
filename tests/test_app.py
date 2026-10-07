@@ -259,3 +259,106 @@ def test_convert_demasiados_ficheros_devuelve_413(client, make_pdf, monkeypatch)
 
     assert response.status_code == 413
     assert not tmp_dirs()
+
+
+def test_timeout_corta_la_conversion_y_limpia(client, make_pdf, monkeypatch):
+    path = make_pdf("uno.pdf", [[("A", 11, False)]])
+
+    def nunca_termina(*_args, **_kwargs):
+        raise app_module.ConvertTimeout("La conversión superó 1s y se canceló.")
+
+    monkeypatch.setattr(app_module, "_run_conversion", nunca_termina)
+
+    response = client.post("/convert", data={"mode": "raw"}, files=[upload(path)])
+
+    assert response.status_code == 504
+    assert "canceló" in response.text
+    assert not tmp_dirs()
+
+
+def test_tras_resetear_el_pool_sigue_sirviendo(client, make_pdf):
+    """El pool se recrea solo tras shutdown(cancel_futures=True)."""
+    path = make_pdf("uno.pdf", [[("A", 11, False)]])
+    app_module._reset_pool()
+
+    response = client.post("/convert", data={"mode": "raw"}, files=[upload(path)])
+
+    assert response.status_code == 200
+    assert not tmp_dirs()
+
+
+def test_arranque_borra_temporales_huerfanos():
+    huerfano = tempfile.mkdtemp(prefix=app_module.TMP_PREFIX)
+    (Path(huerfano) / "basura.pdf").write_bytes(b"%PDF-1.7")
+
+    with TestClient(app_module.app):
+        pass
+
+    assert not os.path.exists(huerfano)
+
+
+def test_rate_limit_devuelve_429(make_pdf, monkeypatch):
+    import importlib
+
+    monkeypatch.setenv("RATE_LIMIT", "1/minute")
+    from pdf2json import app as fresh
+
+    fresh = importlib.reload(fresh)
+    path = make_pdf("uno.pdf", [[("A", 11, False)]])
+
+    try:
+        with TestClient(fresh.app) as fresh_client:
+            primera = fresh_client.post(
+                "/convert", data={"mode": "raw"}, files=[upload(path)]
+            )
+            segunda = fresh_client.post(
+                "/convert", data={"mode": "raw"}, files=[upload(path)]
+            )
+
+        assert primera.status_code == 200
+        assert segunda.status_code == 429
+        assert segunda.headers["retry-after"] == "60"
+    finally:
+        monkeypatch.undo()
+        importlib.reload(fresh)  # deja el módulo con los valores por defecto
+
+    assert not tmp_dirs()
+
+
+def test_timeout_real_mata_el_proceso_y_el_pool_se_recupera(client, make_pdf, monkeypatch):
+    """Recorrido completo: el future no cumple a tiempo, el pool se descarta y se recrea.
+
+    Con un timeout de 1 ms ni siquiera un PDF trivial llega, así que se ejercita el
+    camino real (ProcessPoolExecutor + shutdown(cancel_futures=True)) sin depender de
+    un PDF patológico.
+    """
+    path = make_pdf("uno.pdf", [[("A", 11, False)]])
+    monkeypatch.setattr(app_module, "CONVERT_TIMEOUT_S", 0.001)
+
+    cortada = client.post("/convert", data={"mode": "raw"}, files=[upload(path)])
+
+    assert cortada.status_code == 504
+    assert not tmp_dirs()
+
+    monkeypatch.undo()
+    app_module.limiter.reset()
+
+    recuperada = client.post("/convert", data={"mode": "raw"}, files=[upload(path)])
+
+    assert recuperada.status_code == 200
+    assert not tmp_dirs()
+
+
+def test_reset_pool_mata_a_los_workers():
+    """Un worker colgado no puede sobrevivir al reinicio del pool."""
+    pool = app_module._get_pool()
+    pool.submit(len, "arranca el worker").result(timeout=30)
+    workers = list(pool._processes.values())
+    assert workers
+    assert all(worker.is_alive() for worker in workers)
+
+    app_module._reset_pool()
+
+    for worker in workers:
+        worker.join(timeout=5)
+        assert not worker.is_alive()
