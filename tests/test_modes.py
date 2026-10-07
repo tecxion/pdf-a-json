@@ -1,4 +1,6 @@
 
+import pytest
+
 from pdf2json import extract, modes
 
 
@@ -93,3 +95,90 @@ def test_layout_sin_paginas_no_revienta():
 
     assert out["sections"] == []
     assert out["summary"]["sections_found"] == 0
+
+
+def _doc(text: str) -> extract.Doc:
+    page = extract.Page(number=1, text=text, lines=[], tables=[], has_text=True)
+    return extract.Doc(metadata={"page_count": 1}, pages=[page])
+
+
+def test_schema_captura_campo_por_regex():
+    doc = _doc("Ley 12/2023, de 5 de marzo, de cosas.")
+    rules = modes.compile_rules(
+        [{"name": "numero", "kind": "regex", "pattern": r"Ley\s+(\d+/\d{4})"}]
+    )
+
+    out = modes.schema(doc, rules)
+
+    assert out["mode"] == "schema"
+    assert out["fields"]["numero"] == "12/2023"
+    assert out["unmatched"] == []
+    assert out["rules_applied"] == [
+        {"name": "numero", "kind": "regex", "pattern": r"Ley\s+(\d+/\d{4})"}
+    ]
+    assert "rule_errors" not in out["summary"]
+
+
+def test_schema_campo_sin_coincidencia_es_null_y_unmatched():
+    doc = _doc("Un texto cualquiera.")
+    rules = modes.compile_rules(
+        [{"name": "fecha", "kind": "regex", "pattern": r"Fecha:\s*(\d{4})"}]
+    )
+
+    out = modes.schema(doc, rules)
+
+    assert out["fields"] == {"fecha": None}
+    assert out["unmatched"] == ["fecha"]
+
+
+def test_schema_regla_label_captura_resto_de_linea():
+    doc = _doc("Base imponible: 1.234,00 EUR\nTotal: 1.493,14 EUR\n")
+    rules = modes.compile_rules(
+        [{"name": "base", "kind": "label", "pattern": "Base imponible"}]
+    )
+
+    out = modes.schema(doc, rules)
+
+    assert out["fields"]["base"] == "1.234,00 EUR"
+
+
+def test_compile_rules_rechaza_regex_sin_grupo():
+    with pytest.raises(modes.RuleError, match="grupo de captura"):
+        modes.compile_rules([{"name": "x", "kind": "regex", "pattern": r"Ley\s+\d+"}])
+
+
+def test_compile_rules_rechaza_patron_invalido():
+    with pytest.raises(modes.RuleError, match="inválido"):
+        modes.compile_rules([{"name": "x", "kind": "regex", "pattern": "(sin cerrar"}])
+
+
+def test_compile_rules_rechaza_patron_demasiado_largo():
+    with pytest.raises(modes.RuleError, match="caracteres"):
+        modes.compile_rules(
+            [{"name": "x", "kind": "regex", "pattern": "(" + "a" * 250 + ")"}]
+        )
+
+
+def test_compile_rules_rechaza_demasiadas_reglas():
+    muchas = [
+        {"name": f"c{i}", "kind": "regex", "pattern": r"(\d)"}
+        for i in range(modes.MAX_RULES + 1)
+    ]
+    with pytest.raises(modes.RuleError, match="reglas"):
+        modes.compile_rules(muchas)
+
+
+def test_schema_patron_catastrofico_expira_sin_colgarse():
+    # (a|aa)+ hace backtracking exponencial en la librería regex; (a+)+ no, porque
+    # regex lo optimiza. Si este patrón deja de ser lento, buscar otro: lo que se
+    # prueba es que el timeout corta y el fallo se reporta, no este patrón concreto.
+    doc = _doc("a" * 34 + "b")
+    rules = modes.compile_rules(
+        [{"name": "bomba", "kind": "regex", "pattern": r"(a|aa)+$"}]
+    )
+
+    out = modes.schema(doc, rules)
+
+    assert out["fields"]["bomba"] is None
+    assert out["unmatched"] == ["bomba"]
+    assert out["summary"]["rule_errors"][0]["name"] == "bomba"

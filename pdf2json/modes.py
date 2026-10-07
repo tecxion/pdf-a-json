@@ -5,6 +5,7 @@ No depende de la capa web ni de PyMuPDF: solo consume dataclasses de extract.
 from __future__ import annotations
 
 import statistics
+from dataclasses import dataclass
 
 import regex
 
@@ -152,4 +153,101 @@ def layout(doc: Doc) -> dict:
 
     out["sections"] = sections
     out["summary"]["sections_found"] = headings_found
+    return out
+
+
+MAX_PATTERN_LEN = 200
+MAX_RULES = 30
+RULE_TIMEOUT_S = 1.0
+
+
+class RuleError(ValueError):
+    """Regla inválida. El mensaje se muestra al usuario; le corresponde un 422."""
+
+
+@dataclass
+class CompiledRule:
+    name: str
+    kind: str
+    pattern: str
+    compiled: regex.Pattern
+
+
+def compile_rules(rules: list[dict]) -> list[CompiledRule]:
+    """Valida y compila las reglas ANTES de abrir ningún PDF.
+
+    Los patrones vienen de usuarios anónimos de internet: entrada no confiable.
+    """
+    if len(rules) > MAX_RULES:
+        raise RuleError(
+            f"Máximo {MAX_RULES} reglas por petición, has enviado {len(rules)}."
+        )
+
+    compiled_rules: list[CompiledRule] = []
+    for rule in rules:
+        name = (rule.get("name") or "").strip()
+        kind = rule.get("kind")
+        pattern = rule.get("pattern") or ""
+
+        if not name:
+            raise RuleError("Hay una regla sin nombre de campo.")
+        if len(pattern) > MAX_PATTERN_LEN:
+            raise RuleError(f"{name}: el patrón supera {MAX_PATTERN_LEN} caracteres.")
+        if kind == "label":
+            source = regex.escape(pattern) + r"[:\s]*(.+)"
+        elif kind == "regex":
+            source = pattern
+        else:
+            raise RuleError(f"{name}: tipo de regla desconocido '{kind}'.")
+
+        try:
+            compiled = regex.compile(source, regex.MULTILINE)
+        except regex.error as exc:
+            raise RuleError(f"{name}: patrón inválido ({exc}).") from exc
+        if compiled.groups < 1:
+            raise RuleError(
+                f"{name}: el patrón necesita un grupo de captura, por ejemplo (\\d+)."
+            )
+
+        compiled_rules.append(
+            CompiledRule(name=name, kind=kind, pattern=pattern, compiled=compiled)
+        )
+    return compiled_rules
+
+
+def schema(doc: Doc, rules: list[CompiledRule]) -> dict:
+    out = _envelope(doc, "schema")
+    text = "\n".join(page.text for page in doc.pages)
+
+    fields: dict[str, str | None] = {}
+    unmatched: list[str] = []
+    errors: list[dict] = []
+
+    for rule in rules:
+        try:
+            match = rule.compiled.search(text, timeout=RULE_TIMEOUT_S)
+        except TimeoutError:
+            fields[rule.name] = None
+            unmatched.append(rule.name)
+            errors.append(
+                {
+                    "name": rule.name,
+                    "error": f"la regla superó {RULE_TIMEOUT_S}s y se abortó",
+                }
+            )
+            continue
+
+        value = match.group(1) if match else None
+        value = value.strip() if value else None
+        fields[rule.name] = value
+        if value is None:
+            unmatched.append(rule.name)
+
+    out["fields"] = fields
+    out["unmatched"] = unmatched
+    out["rules_applied"] = [
+        {"name": r.name, "kind": r.kind, "pattern": r.pattern} for r in rules
+    ]
+    if errors:
+        out["summary"]["rule_errors"] = errors
     return out
