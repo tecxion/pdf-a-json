@@ -1,0 +1,28 @@
+{% for rule in rules %}
+<div class="rule">
+  <input
+    name="rule_name"
+    placeholder="nombre del campo"
+    value="{{ rule.name }}"
+    aria-label="Nombre del campo"
+  />
+  <select name="rule_kind" aria-label="Tipo de regla">
+    <option value="regex" {% if rule.kind == 'regex' %}selected{% endif %}>regex</option>
+    <option value="label" {% if rule.kind == 'label' %}selected{% endif %}>etiqueta</option>
+  </select>
+  <input
+    name="rule_pattern"
+    placeholder="patrón, p. ej. Ley\s+(\d+/\d{4})"
+    value="{{ rule.pattern }}"
+    aria-label="Patrón"
+  />
+  <button
+    type="button"
+    class="remove"
+    onclick="this.closest('.rule').remove()"
+    aria-label="Quitar regla"
+  >
+    ×
+  </button>
+</div>
+{% endfor %}

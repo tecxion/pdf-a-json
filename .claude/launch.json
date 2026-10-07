@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pdf2json",
+      "runtimeExecutable": ".venv/bin/uvicorn",
+      "runtimeArgs": ["pdf2json.app:app", "--port", "8000"],
+      "port": 8000
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>pdf2json — convierte PDF a JSON</title>
+    <link rel="stylesheet" href="/static/app.css" />
+    <script src="/static/htmx.min.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <h1>PDF a JSON</h1>
+      <p class="lead">
+        Sube uno o varios PDF y descarga el JSON. Tu PDF <strong>no se guarda</strong>:
+        se borra del servidor en cuanto termina la conversión.
+      </p>
+
+      <form action="/convert" method="post" enctype="multipart/form-data">
+        <fieldset>
+          <legend>1. Ficheros</legend>
+          <input
+            type="file"
+            name="files"
+            accept="application/pdf"
+            multiple
+            required
+            aria-label="PDF a convertir"
+          />
+          <p class="hint">
+            Hasta {{ max_files }} PDF por vez. Varios ficheros se descargan en un ZIP.
+          </p>
+        </fieldset>
+
+        <fieldset>
+          <legend>2. Modo</legend>
+          <label>
+            <input
+              type="radio"
+              name="mode"
+              value="raw"
+              checked
+              onchange="document.getElementById('panel-campos').hidden = true"
+            />
+            <strong>Texto por página</strong> — el texto tal cual, página a página.
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="mode"
+              value="layout"
+              onchange="document.getElementById('panel-campos').hidden = true"
+            />
+            <strong>Estructurado</strong> — títulos, secciones y tablas anidadas.
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="mode"
+              value="schema"
+              onchange="document.getElementById('panel-campos').hidden = false"
+            />
+            <strong>Campos</strong> — extrae solo los datos que indiques.
+          </label>
+        </fieldset>
+
+        <fieldset id="panel-campos" hidden>
+          <legend>3. Campos a extraer</legend>
+          <p class="hint">
+            <em>regex</em>: patrón con un grupo de captura; el valor es ese grupo.
+            <em>etiqueta</em>: texto literal; el valor es el resto de la línea.
+          </p>
+
+          <p class="hint" id="plantillas-label">Empezar con una plantilla:</p>
+          <div class="plantillas" role="group" aria-labelledby="plantillas-label">
+            {% for key, template in templates_rules.items() %}
+            <button
+              type="button"
+              hx-get="/fields/template/{{ key }}"
+              hx-target="#reglas"
+              hx-swap="innerHTML"
+            >
+              {{ template.label }}
+            </button>
+            {% endfor %}
+          </div>
+
+          <div id="reglas"></div>
+
+          <button
+            type="button"
+            hx-get="/fields/row"
+            hx-target="#reglas"
+            hx-swap="beforeend"
+          >
+            + Añadir campo
+          </button>
+        </fieldset>
+
+        <button type="submit" class="primary">Convertir y descargar</button>
+      </form>
+
+      <section class="privacidad">
+        <h2>Privacidad</h2>
+        <p>
+          Los PDF se escriben en un directorio temporal del servidor y se borran al
+          terminar la conversión, también si falla. No hay base de datos ni copias. Los
+          registros del servidor no guardan el nombre del fichero, su contenido ni los
+          patrones que escribes.
+        </p>
+        <p>
+          Si el JSON trae <code>"ocr_required": true</code> en alguna página, ese PDF
+          está escaneado como imagen: esta herramienta no hace OCR y esa página sale
+          vacía.
+        </p>
+        <p>Código abierto, licencia AGPL-3.0.</p>
+      </section>
+    </main>
+  </body>
+</html>

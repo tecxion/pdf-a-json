@@ -1,0 +1,24 @@
+services:
+  pdf2json:
+    build: .
+    ports:
+      - "8000:8000"
+    # Los PDF temporales viven en RAM y desaparecen al reiniciar: nunca tocan el disco.
+    tmpfs:
+      - /tmp
+    environment:
+      MAX_FILE_MB: "25"
+      MAX_FILES: "10"
+      MAX_PAGES: "500"
+      RATE_LIMIT: "10/minute"
+      CONVERT_TIMEOUT_S: "30"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

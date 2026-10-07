@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pdf2json"
+version = "0.1.0"
+description = "Convierte PDF a JSON desde el navegador, sin almacenar los ficheros"
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-or-later" }
+dependencies = [
+    "pymupdf>=1.24",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "regex>=2024.4.16",
+    "slowapi>=0.1.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx2>=0.28"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["pdf2json"]
+
+[tool.pytest.ini_options]
+# PyMuPDF 1.28 arrastra avisos de sus bindings SWIG al importarse en Python 3.11.
+# Se silencian solo esos para que un aviso propio del proyecto no pase inadvertido.
+filterwarnings = [
+    "error",
+    "ignore:builtin type Swig.* has no __module__ attribute:DeprecationWarning",
+    "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning",
+]
