@@ -449,3 +449,18 @@ def test_los_mensajes_de_error_escapan_la_entrada_del_usuario(client, make_pdf):
 
     assert respuesta_regla.status_code == 422
     assert "<script>" not in respuesta_regla.text
+
+
+def test_la_pagina_carga_el_script_de_descarga(client):
+    """Sin app.js, el navegador reintenta la descarga con GET /convert y da 405.
+
+    La conversión solo existe en la respuesta del POST, así que ese reintento no
+    encuentra nada: la descarga tiene que hacerse desde el blob, en el cliente.
+    """
+    assert '/static/app.js' in client.get("/").text
+    assert client.get("/static/app.js").status_code == 200
+
+
+def test_convert_no_responde_a_get(client):
+    """Deja constancia del 405 que provocaba el fallo: /convert es solo POST."""
+    assert client.get("/convert").status_code == 405
