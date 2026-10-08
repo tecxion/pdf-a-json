@@ -2,7 +2,7 @@ services:
   pdf2json:
     build: .
     ports:
-      - "8000:8000"
+      - "8085:8085"
     # Los PDF temporales viven en RAM y desaparecen al reiniciar: nunca tocan el disco.
     tmpfs:
       - /tmp
