@@ -10,15 +10,16 @@
   </head>
   <body>
     <main>
-      <h1>PDF a JSON</h1>
+      <p class="badge">Nada se guarda</p>
+      <h1>PDF a <em>JSON</em></h1>
       <p class="lead">
-        Sube uno o varios PDF y descarga el JSON. Tu PDF <strong>no se guarda</strong>:
-        se borra del servidor en cuanto termina la conversión.
+        Sube uno o varios PDF y descarga el JSON. Tu fichero se borra del servidor
+        en cuanto termina la conversión: <strong>no queda copia de nada</strong>.
       </p>
 
       <form action="/convert" method="post" enctype="multipart/form-data">
         <fieldset>
-          <legend>1. Ficheros</legend>
+          <legend>Ficheros</legend>
           <input
             type="file"
             name="files"
@@ -33,46 +34,50 @@
         </fieldset>
 
         <fieldset>
-          <legend>2. Modo</legend>
-          <label>
-            <input
-              type="radio"
-              name="mode"
-              value="raw"
-              checked
-              onchange="document.getElementById('panel-campos').hidden = true"
-            />
-            <strong>Texto por página</strong> — el texto tal cual, página a página.
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="mode"
-              value="layout"
-              onchange="document.getElementById('panel-campos').hidden = true"
-            />
-            <strong>Estructurado</strong> — títulos, secciones y tablas anidadas.
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="mode"
-              value="schema"
-              onchange="document.getElementById('panel-campos').hidden = false"
-            />
-            <strong>Campos</strong> — extrae solo los datos que indiques.
-          </label>
+          <legend>Modo</legend>
+          <div class="modos">
+            <label class="modo">
+              <input
+                type="radio"
+                name="mode"
+                value="raw"
+                checked
+                onchange="document.getElementById('panel-campos').hidden = true"
+              />
+              <strong>Texto por página</strong>
+              <span>El texto tal cual, página a página.</span>
+            </label>
+            <label class="modo">
+              <input
+                type="radio"
+                name="mode"
+                value="layout"
+                onchange="document.getElementById('panel-campos').hidden = true"
+              />
+              <strong>Estructurado</strong>
+              <span>Títulos, secciones y tablas anidadas.</span>
+            </label>
+            <label class="modo">
+              <input
+                type="radio"
+                name="mode"
+                value="schema"
+                onchange="document.getElementById('panel-campos').hidden = false"
+              />
+              <strong>Campos</strong>
+              <span>Solo los datos que indiques.</span>
+            </label>
+          </div>
         </fieldset>
 
         <fieldset id="panel-campos" hidden>
-          <legend>3. Campos a extraer</legend>
+          <legend>Campos a extraer</legend>
           <p class="hint">
-            <em>regex</em>: patrón con un grupo de captura; el valor es ese grupo.
-            <em>etiqueta</em>: texto literal; el valor es el resto de la línea.
+            <code>regex</code>: patrón con un grupo de captura; el valor es ese grupo.
+            <code>etiqueta</code>: texto literal; el valor es el resto de la línea.
           </p>
 
-          <p class="hint" id="plantillas-label">Empezar con una plantilla:</p>
-          <div class="plantillas" role="group" aria-labelledby="plantillas-label">
+          <div class="plantillas" role="group" aria-label="Plantillas de reglas">
             {% for key, template in templates_rules.items() %}
             <button
               type="button"
@@ -106,14 +111,18 @@
           Los PDF se escriben en un directorio temporal del servidor y se borran al
           terminar la conversión, también si falla. No hay base de datos ni copias. Los
           registros del servidor no guardan el nombre del fichero, su contenido ni los
-          patrones que escribes.
+          patrones que escribes. Las fuentes de esta página se sirven desde este mismo
+          servidor: tu navegador no contacta con nadie más.
         </p>
         <p>
           Si el JSON trae <code>"ocr_required": true</code> en alguna página, ese PDF
           está escaneado como imagen: esta herramienta no hace OCR y esa página sale
           vacía.
         </p>
-        <p>Código abierto, licencia AGPL-3.0.</p>
+        <p>
+          Código abierto, licencia AGPL-3.0. Hecho por
+          <a href="https://tecxart.es">Tecxart</a>.
+        </p>
       </section>
     </main>
   </body>

@@ -385,11 +385,14 @@ def test_fields_template_desconocida_devuelve_404(client):
 
 
 def test_index_lista_las_plantillas_y_la_nota_de_privacidad(client):
-    body = client.get("/").text
+    # El HTML parte las frases en varias líneas: se comparan sin esos saltos.
+    body = " ".join(client.get("/").text.split())
 
     assert "Ley / BOE" in body
     assert "Factura" in body
-    assert "no se guarda" in body.lower()
+    # La promesa de no almacenamiento tiene que estar visible en la página.
+    assert "Nada se guarda" in body
+    assert "se borran al terminar la conversión" in body
 
 
 def test_convert_schema_con_varias_reglas(client, make_pdf):
