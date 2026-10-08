@@ -67,6 +67,19 @@ El contador del rate limit vive en la memoria de cada worker de uvicorn, así qu
 real se multiplica por el número de workers. Con 1-2 workers es suficiente; para precisión,
 `slowapi` admite Redis.
 
+## Desplegar en un servidor
+
+```bash
+./scripts/preparar-deploy.sh
+```
+
+Deja en `deploy/` solo lo que hay que subir: el paquete, `pyproject.toml`, el
+`Dockerfile`, el `docker-compose.yml`, la licencia y un `DESPLIEGUE.md` con los
+pasos. Esa carpeta está en `.gitignore`: se regenera, no se versiona.
+
+El guion se puede volver a ejecutar cada vez que cambie la app. Regenera todo
+menos `deploy/.env`, que es donde el servidor guarda sus ajustes.
+
 ## Límites conocidos
 
 - La detección de secciones del modo `layout` es heurística: tamaño de fuente más patrones

@@ -6,12 +6,13 @@ services:
     # Los PDF temporales viven en RAM y desaparecen al reiniciar: nunca tocan el disco.
     tmpfs:
       - /tmp
+    # Los valores se ajustan en el fichero .env de al lado, sin tocar este fichero.
     environment:
-      MAX_FILE_MB: "25"
-      MAX_FILES: "10"
-      MAX_PAGES: "500"
-      RATE_LIMIT: "10/minute"
-      CONVERT_TIMEOUT_S: "30"
+      MAX_FILE_MB: "${MAX_FILE_MB:-25}"
+      MAX_FILES: "${MAX_FILES:-10}"
+      MAX_PAGES: "${MAX_PAGES:-500}"
+      RATE_LIMIT: "${RATE_LIMIT:-10/minute}"
+      CONVERT_TIMEOUT_S: "${CONVERT_TIMEOUT_S:-30}"
     healthcheck:
       test:
         - CMD
