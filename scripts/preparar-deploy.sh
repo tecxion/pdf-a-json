@@ -24,9 +24,26 @@ find "$destino/pdf2json" -name __pycache__ -type d -exec rm -rf {} +
 find "$destino/pdf2json" -name '*.pyc' -delete
 cp pyproject.toml Dockerfile .dockerignore docker-compose.yml LICENSE "$destino/"
 
+# requirements.txt para los paneles que instalan así. Se genera desde
+# pyproject.toml para que no haya dos listas de dependencias que diverjan.
+# Se extrae con sed y no con tomllib porque el python3 del sistema puede ser
+# anterior al 3.11, y este guion tiene que funcionar en cualquier máquina.
+{
+  echo "# Generado por scripts/preparar-deploy.sh desde pyproject.toml. No editar."
+  sed -n '/^dependencies = \[/,/^]/p' pyproject.toml |
+    sed -n 's/^ *"\(.*\)",*$/\1/p'
+} > "$destino/requirements.txt"
+
+if [ "$(grep -cv '^#' "$destino/requirements.txt")" -lt 1 ]; then
+  echo "error: no se extrajo ninguna dependencia de pyproject.toml" >&2
+  exit 1
+fi
+
 cat > "$destino/.env.example" <<'EOF'
 # Copia este fichero a .env y ajusta lo que quieras. Todo es opcional:
 # sin .env, la app usa estos mismos valores.
+# PUERTO solo lo usa Docker: es el puerto del servidor que se publica.
+PUERTO=8000
 MAX_FILE_MB=25
 MAX_FILES=10
 MAX_PAGES=500

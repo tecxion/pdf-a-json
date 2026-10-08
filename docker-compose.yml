@@ -2,7 +2,9 @@ services:
   pdf2json:
     build: .
     ports:
-      - "8085:8085"
+      # Izquierda: puerto del servidor, se cambia con PUERTO en .env.
+      # Derecha: puerto dentro del contenedor, siempre 8000 (lo fija el Dockerfile).
+      - "${PUERTO:-8000}:8000"
     # Los PDF temporales viven en RAM y desaparecen al reiniciar: nunca tocan el disco.
     tmpfs:
       - /tmp
