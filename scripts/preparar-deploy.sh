@@ -51,6 +51,8 @@ RATE_LIMIT=10/minute
 CONVERT_TIMEOUT_S=30
 MAX_REQUEST_MB=60
 MAX_CONCURRENTES=4
+# OCR_ENABLED=1 solo funciona si la imagen se construyó con CON_OCR=1.
+OCR_ENABLED=0
 
 # Identificación del titular en las páginas legales. Solo hace falta cambiarlas
 # si alojas tu propia instancia.

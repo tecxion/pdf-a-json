@@ -30,7 +30,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from . import modes
-from .errors import PdfError, TooManyPages
+from .errors import PdfError, SinTexto, TooManyPages
 from .templates_rules import TEMPLATES
 
 log = logging.getLogger("pdf2json")
@@ -49,6 +49,11 @@ MAX_REQUEST_BYTES = MAX_REQUEST_MB * 1024 * 1024
 # Conversiones simultáneas. Por encima se rechaza con 503 en vez de encolar
 # peticiones que acabarían todas en timeout.
 MAX_CONCURRENTES = int(os.getenv("MAX_CONCURRENTES", "4"))
+# OCR para páginas escaneadas. Apagado por defecto: multiplica el tiempo de
+# conversión y exige Tesseract en la imagen. Si se activa sin él, se avisa en el
+# registro y las páginas sin texto siguen saliendo vacías.
+OCR_ENABLED = os.getenv("OCR_ENABLED", "0") == "1"
+OCR_IDIOMA = os.getenv("OCR_IDIOMA", "spa")
 
 # Identificación del titular en las páginas legales. Van por entorno para que
 # quien aloje su propia instancia ponga la suya sin tocar el código.
@@ -157,7 +162,14 @@ def _reset_pool() -> None:
     _pool = None
 
 
-def _convert_file(path: str, mode: str, rules: list[dict], max_pages: int) -> dict:
+def _convert_file(
+    path: str,
+    mode: str,
+    rules: list[dict],
+    max_pages: int,
+    ocr: bool = False,
+    ocr_idioma: str = "spa",
+) -> dict:
     """Corre en el proceso worker. Debe ser picklable: nivel de módulo, sin cierres."""
     from . import extract  # aquí dentro para que app.py no dependa de pymupdf
 
@@ -168,7 +180,24 @@ def _convert_file(path: str, mode: str, rules: list[dict], max_pages: int) -> di
         )
 
     # auto necesita las tablas igual que layout: puede acabar devolviéndolo.
-    doc = extract.parse(path, with_tables=(mode in ("auto", "layout")))
+    doc = extract.parse(
+        path,
+        with_tables=(mode in ("auto", "layout")),
+        ocr=ocr,
+        ocr_idioma=ocr_idioma,
+    )
+
+    # Un JSON con todas las páginas vacías no es un resultado, es un fallo
+    # silencioso: quien lo recibe no entiende por qué no hay nada dentro.
+    if not any(page.has_text for page in doc.pages):
+        raise SinTexto(
+            "Este PDF no tiene texto: está escaneado como imagen. "
+            + (
+                "El reconocimiento óptico no pudo leerlo."
+                if ocr
+                else "Esta herramienta no hace reconocimiento óptico."
+            )
+        )
     if mode == "auto":
         return modes.auto(doc)
     if mode == "raw":
@@ -179,7 +208,9 @@ def _convert_file(path: str, mode: str, rules: list[dict], max_pages: int) -> di
 
 
 def _run_conversion(path: Path, mode: str, rules: list[dict]) -> dict:
-    future = _get_pool().submit(_convert_file, str(path), mode, rules, MAX_PAGES)
+    future = _get_pool().submit(
+        _convert_file, str(path), mode, rules, MAX_PAGES, OCR_ENABLED, OCR_IDIOMA
+    )
     try:
         return future.result(timeout=CONVERT_TIMEOUT_S)
     except FutureTimeout as exc:
@@ -250,6 +281,8 @@ def _describe(exc: Exception) -> tuple[str, int]:
     """Traduce una excepción a (mensaje para el usuario, código HTTP)."""
     if isinstance(exc, TooManyPages):
         return str(exc), 413
+    if isinstance(exc, SinTexto):
+        return str(exc), 422
     if isinstance(exc, PdfError):  # EncryptedPdf, CorruptPdf y futuras
         return str(exc), 422
     log.exception("fallo inesperado en la conversión")  # sin nombre ni contenido

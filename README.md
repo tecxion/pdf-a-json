@@ -25,11 +25,22 @@ disco físico.
 No hay base de datos ni caché. Los registros del servidor no guardan el nombre del fichero
 subido, su contenido, los campos extraídos ni los patrones que escribes.
 
-## Sin OCR
+## PDF escaneados
 
-Si una página no tiene capa de texto (PDF escaneado), sale con `text: ""` y
-`ocr_required: true`, y su número aparece en `summary.pages_without_text`. Esta
-herramienta no hace OCR.
+Si una página no tiene capa de texto, sale con `text: ""` y `ocr_required: true`,
+y su número aparece en `summary.pages_without_text`. Si **ninguna** página tiene
+texto, la conversión falla con un mensaje claro en vez de devolver un JSON vacío.
+
+Hay OCR opcional, apagado por defecto porque multiplica el tiempo de conversión:
+
+```bash
+docker compose build --build-arg CON_OCR=1
+OCR_ENABLED=1 docker compose up -d
+```
+
+Solo se aplica a las páginas que no tienen texto. Si se activa sin Tesseract en
+la imagen, se avisa una vez en el registro y esas páginas siguen saliendo
+vacías.
 
 ## Ejecutar
 
@@ -65,6 +76,8 @@ Tests:
 | `CONVERT_TIMEOUT_S` | 30 | Segundos por fichero antes de cancelar |
 | `MAX_REQUEST_MB` | 60 | Tamaño de la petición entera, cortado antes de leer el cuerpo |
 | `MAX_CONCURRENTES` | 4 | Conversiones a la vez; por encima se responde 503 |
+| `OCR_ENABLED` | `0` | `1` activa OCR en las páginas sin texto (requiere imagen con `CON_OCR=1`) |
+| `OCR_IDIOMA` | `spa` | Idioma de Tesseract |
 
 El contador del rate limit vive en la memoria de cada worker de uvicorn, así que el límite
 real se multiplica por el número de workers. Con 1-2 workers es suficiente; para precisión,

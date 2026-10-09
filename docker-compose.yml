@@ -1,6 +1,10 @@
 services:
   pdf2json:
-    build: .
+    build:
+      context: .
+      args:
+        # Ponlo a 1 para incluir Tesseract y poder activar OCR_ENABLED.
+        CON_OCR: "${CON_OCR:-0}"
     ports:
       # Izquierda: puerto del servidor, se cambia con PUERTO en .env.
       # Derecha: puerto dentro del contenedor, siempre 8000 (lo fija el Dockerfile).
@@ -15,6 +19,11 @@ services:
       MAX_PAGES: "${MAX_PAGES:-500}"
       RATE_LIMIT: "${RATE_LIMIT:-10/minute}"
       CONVERT_TIMEOUT_S: "${CONVERT_TIMEOUT_S:-30}"
+      MAX_REQUEST_MB: "${MAX_REQUEST_MB:-60}"
+      MAX_CONCURRENTES: "${MAX_CONCURRENTES:-4}"
+      OCR_ENABLED: "${OCR_ENABLED:-0}"
+      LEGAL_TITULAR: "${LEGAL_TITULAR:-TecXarT}"
+      LEGAL_EMAIL: "${LEGAL_EMAIL:-tecxart@gmail.com}"
     healthcheck:
       test:
         - CMD

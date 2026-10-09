@@ -4,14 +4,26 @@ No depende de la capa web ni la conoce. Único punto del proyecto que importa Py
 """
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 
 import pymupdf
 
-from .errors import CorruptPdf, EncryptedPdf, PdfError, TooManyPages  # noqa: F401
+from .errors import (  # noqa: F401
+    CorruptPdf,
+    EncryptedPdf,
+    PdfError,
+    SinTexto,
+    TooManyPages,
+)
+
+log = logging.getLogger("pdf2json.extract")
 
 BOLD_FLAG = 1 << 4  # bit 4 de span["flags"] en PyMuPDF
+
+OCR_DPI = 200  # suficiente para texto impreso; más alto dispara el tiempo
+_ocr_no_disponible = False  # se avisa una vez, no en cada página
 
 
 @dataclass
@@ -35,6 +47,7 @@ class Page:
     lines: list[Line] = field(default_factory=list)
     tables: list[Table] = field(default_factory=list)
     has_text: bool = False
+    ocr: bool = False  # el texto salió de reconocimiento óptico, no del PDF
 
 
 @dataclass
@@ -116,15 +129,45 @@ def page_count(path: str | os.PathLike) -> int:
         return doc.page_count
 
 
-def parse(path: str | os.PathLike, with_tables: bool = False) -> Doc:
+def _texto_ocr(page: pymupdf.Page, idioma: str) -> str:
+    """Texto de una página escaneada. Devuelve "" si Tesseract no está instalado.
+
+    Se avisa una sola vez: con OCR activado y Tesseract ausente, cada página
+    fallaría igual y el registro sería ilegible.
+    """
+    global _ocr_no_disponible
+    if _ocr_no_disponible:
+        return ""
+    try:
+        return page.get_text("text", textpage=page.get_textpage_ocr(
+            language=idioma, dpi=OCR_DPI, full=False
+        ))
+    except RuntimeError as exc:
+        _ocr_no_disponible = True
+        log.warning("OCR activado pero no utilizable: %s", exc)
+        return ""
+
+
+def parse(
+    path: str | os.PathLike,
+    with_tables: bool = False,
+    ocr: bool = False,
+    ocr_idioma: str = "spa",
+) -> Doc:
     """Lee el PDF completo.
 
     `with_tables` solo lo necesita el modo layout: find_tables es caro.
+    `ocr` solo se aplica a las páginas que no tienen texto, porque es lentísimo
+    comparado con leer la capa de texto.
     """
     with _open(path) as doc:
         pages: list[Page] = []
         for number, page in enumerate(doc, start=1):
             text = page.get_text("text")
+            reconocido = False
+            if ocr and not text.strip():
+                text = _texto_ocr(page, ocr_idioma)
+                reconocido = bool(text.strip())
             pages.append(
                 Page(
                     number=number,
@@ -132,6 +175,7 @@ def parse(path: str | os.PathLike, with_tables: bool = False) -> Doc:
                     lines=_lines(page),
                     tables=_tables(page, number) if with_tables else [],
                     has_text=bool(text.strip()),
+                    ocr=reconocido,
                 )
             )
         return Doc(metadata=_metadata(doc), pages=pages)

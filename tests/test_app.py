@@ -641,3 +641,43 @@ def test_el_favicon_existe_y_la_pagina_lo_enlaza(client):
     respuesta = client.get("/static/favicon.svg")
     assert respuesta.status_code == 200
     assert "svg" in respuesta.headers["content-type"]
+
+
+def test_un_pdf_sin_texto_da_error_claro_y_no_un_json_vacio(client, make_pdf):
+    """Devolver páginas vacías es un fallo silencioso: nadie entiende qué pasó."""
+    path = make_pdf("escaneado.pdf", [[], []])
+
+    respuesta = client.post("/convert", data={"mode": "auto"}, files=[upload(path)])
+
+    assert respuesta.status_code == 422
+    assert "escaneado como imagen" in respuesta.text
+    assert "no hace reconocimiento óptico" in respuesta.text
+    assert not tmp_dirs()
+
+
+def test_con_ocr_activado_el_mensaje_cambia(client, make_pdf, monkeypatch):
+    monkeypatch.setattr(app_module, "OCR_ENABLED", True)
+    path = make_pdf("escaneado.pdf", [[]])
+
+    respuesta = client.post("/convert", data={"mode": "raw"}, files=[upload(path)])
+
+    assert respuesta.status_code == 422
+    assert "no pudo leerlo" in respuesta.text
+    assert not tmp_dirs()
+
+
+def test_un_lote_con_un_pdf_escaneado_convierte_el_resto(client, make_pdf):
+    bueno = make_pdf("bueno.pdf", [[("Con texto", 11, False)]])
+    escaneado = make_pdf("escaneado.pdf", [[]])
+
+    respuesta = client.post(
+        "/convert", data={"mode": "raw"}, files=[upload(bueno), upload(escaneado)]
+    )
+
+    assert respuesta.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(respuesta.content)) as archivo:
+        assert "bueno.json" in archivo.namelist()
+        errores = json.loads(archivo.read("_errors.json"))
+        assert errores[0]["filename"] == "escaneado.pdf"
+        assert "escaneado como imagen" in errores[0]["error"]
+    assert not tmp_dirs()

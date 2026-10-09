@@ -1,5 +1,15 @@
 FROM python:3.11-slim
 
+# OCR opcional: añade ~150 MB a la imagen, así que no entra por defecto.
+#   docker compose build --build-arg CON_OCR=1
+# y luego OCR_ENABLED=1 en el entorno para usarlo.
+ARG CON_OCR=0
+RUN if [ "$CON_OCR" = "1" ]; then \
+      apt-get update && \
+      apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-spa && \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+
 RUN useradd --create-home --uid 10001 app
 WORKDIR /srv
 

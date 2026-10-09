@@ -19,3 +19,7 @@ class CorruptPdf(PdfError):
 
 class TooManyPages(PdfError):
     pass
+
+
+class SinTexto(PdfError):
+    """Ninguna página tiene texto extraíble: casi siempre un PDF escaneado."""

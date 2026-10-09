@@ -69,3 +69,25 @@ def test_page_count_no_parsea_el_documento(make_pdf):
     path = make_pdf("dos.pdf", [[("a", 11, False)], [("b", 11, False)]])
 
     assert extract.page_count(path) == 2
+
+
+def test_ocr_apagado_deja_la_pagina_vacia(make_pdf):
+    path = make_pdf("escaneado.pdf", [[]])
+
+    pagina = extract.parse(path).pages[0]
+
+    assert pagina.has_text is False
+    assert pagina.ocr is False
+
+
+def test_ocr_sin_tesseract_degrada_sin_romper(make_pdf, monkeypatch):
+    """Activar OCR en un servidor sin Tesseract no puede tumbar la conversión."""
+    monkeypatch.setattr(extract, "_ocr_no_disponible", False)
+    path = make_pdf("escaneado.pdf", [[], [("con texto", 11, False)]])
+
+    doc = extract.parse(path, ocr=True)
+
+    assert doc.pages[0].has_text is False
+    assert doc.pages[0].ocr is False
+    assert doc.pages[1].has_text is True
+    assert extract._ocr_no_disponible is True  # avisó una vez y dejó de intentarlo
