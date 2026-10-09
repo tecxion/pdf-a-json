@@ -35,8 +35,21 @@
             <input
               type="radio"
               name="mode"
-              value="raw"
+              value="auto"
               checked
+              onchange="document.getElementById('panel-campos').hidden = true"
+            />
+            <strong>Automático</strong>
+            <span>
+              Mira el documento y elige entre texto plano y estructurado. El
+              JSON dice cuál eligió y por qué.
+            </span>
+          </label>
+          <label class="modo">
+            <input
+              type="radio"
+              name="mode"
+              value="raw"
               onchange="document.getElementById('panel-campos').hidden = true"
             />
             <strong>Texto por página</strong>

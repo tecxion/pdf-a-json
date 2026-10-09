@@ -182,3 +182,77 @@ def test_schema_patron_catastrofico_expira_sin_colgarse():
     assert out["fields"]["bomba"] is None
     assert out["unmatched"] == ["bomba"]
     assert out["summary"]["rule_errors"][0]["name"] == "bomba"
+
+
+def test_auto_elige_layout_en_un_documento_con_estructura(make_pdf):
+    path = make_pdf(
+        "ley.pdf",
+        [
+            [
+                ("CAPÍTULO I", 16, True),
+                ("Artículo 1. Objeto.", 14, True),
+                ("Esta ley regula el asunto.", 11, False),
+                ("Artículo 2. Ámbito.", 14, True),
+                ("Se aplica en todo el territorio.", 11, False),
+            ]
+        ],
+    )
+    doc = extract.parse(path, with_tables=True)
+
+    out = modes.auto(doc)
+
+    assert out["mode"] == "layout"
+    assert out["summary"]["auto"]["elegido"] == "layout"
+    assert out["summary"]["auto"]["titulos_detectados"] == 3
+    assert out["sections"][0]["heading"] == "CAPÍTULO I"
+
+
+def test_auto_elige_raw_en_texto_corrido(make_pdf):
+    path = make_pdf(
+        "carta.pdf",
+        [
+            [
+                ("Estimado cliente, le escribimos para informarle.", 11, False),
+                ("Quedamos a su disposición para cualquier duda.", 11, False),
+            ]
+        ],
+    )
+    doc = extract.parse(path, with_tables=True)
+
+    out = modes.auto(doc)
+
+    assert out["mode"] == "raw"
+    assert out["summary"]["auto"]["elegido"] == "raw"
+    assert "menos de los 3" in out["summary"]["auto"]["motivo"]
+    assert "Estimado cliente" in out["pages"][0]["text"]
+
+
+def test_auto_no_estructura_por_un_titulo_suelto(make_pdf):
+    """Un membrete en negrita no convierte una carta en un documento con secciones."""
+    path = make_pdf(
+        "membrete.pdf",
+        [
+            [
+                ("INFORME ANUAL", 18, True),
+                ("El ejercicio se ha cerrado con normalidad.", 11, False),
+                ("No hay incidencias que reseñar.", 11, False),
+            ]
+        ],
+    )
+    doc = extract.parse(path, with_tables=True)
+
+    out = modes.auto(doc)
+
+    assert out["mode"] == "raw"
+    assert out["summary"]["auto"]["titulos_detectados"] == 1
+
+
+def test_auto_elige_raw_si_no_hay_texto(make_pdf):
+    path = make_pdf("escaneado.pdf", [[], []])
+    doc = extract.parse(path, with_tables=True)
+
+    out = modes.auto(doc)
+
+    assert out["mode"] == "raw"
+    assert out["summary"]["auto"]["motivo"] == "el documento no tiene texto extraíble"
+    assert out["summary"]["pages_without_text"] == [1, 2]

@@ -525,3 +525,37 @@ def test_la_barra_y_el_pie_estan_en_todas_las_paginas(client):
         assert "https://www.tecxart.es" in texto, ruta
         assert "https://github.com/tecxion/pdf-a-json" in texto, ruta
         assert "/legal/privacidad" in texto, ruta
+
+
+def test_convert_modo_auto(client, make_pdf):
+    path = make_pdf(
+        "ley.pdf",
+        [
+            [
+                ("CAPÍTULO I", 16, True),
+                ("Artículo 1. Objeto.", 14, True),
+                ("Esta ley regula el asunto.", 11, False),
+                ("Artículo 2. Ámbito.", 14, True),
+            ]
+        ],
+    )
+
+    response = client.post("/convert", data={"mode": "auto"}, files=[upload(path)])
+
+    assert response.status_code == 200
+    body = json.loads(response.content)
+    assert body["mode"] == "layout"
+    assert body["summary"]["auto"]["elegido"] == "layout"
+    assert not tmp_dirs()
+
+
+def test_el_modo_por_defecto_es_auto(client, make_pdf):
+    """Sin indicar modo, el formulario y la API usan el automático."""
+    path = make_pdf("carta.pdf", [[("Texto corrido sin títulos.", 11, False)]])
+
+    response = client.post("/convert", files=[upload(path)])
+
+    assert response.status_code == 200
+    body = json.loads(response.content)
+    assert body["summary"]["auto"]["elegido"] == "raw"
+    assert not tmp_dirs()

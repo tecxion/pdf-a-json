@@ -251,3 +251,42 @@ def schema(doc: Doc, rules: list[CompiledRule]) -> dict:
     if errors:
         out["summary"]["rule_errors"] = errors
     return out
+
+
+AUTO_MIN_SECCIONES = 3
+
+
+def auto(doc: Doc) -> dict:
+    """Elige entre raw y layout mirando el resultado real, no adivinándolo antes.
+
+    Ejecutar layout es barato (recorre líneas ya extraídas), así que se hace
+    siempre y se descarta si no encontró estructura suficiente. Un único título
+    suelto no justifica devolver una jerarquía: suele ser el membrete de un
+    documento que en realidad es texto corrido.
+
+    No puede elegir schema: ese modo necesita reglas que solo conoce quien sube
+    el fichero.
+    """
+    estructurado = layout(doc)
+    titulos = estructurado["summary"]["sections_found"]
+
+    if not any(page.has_text for page in doc.pages):
+        elegido = "raw"
+        motivo = "el documento no tiene texto extraíble"
+    elif titulos >= AUTO_MIN_SECCIONES:
+        elegido = "layout"
+        motivo = f"se detectaron {titulos} títulos, el documento tiene estructura"
+    else:
+        elegido = "raw"
+        motivo = (
+            f"solo se detectaron {titulos} títulos, menos de los "
+            f"{AUTO_MIN_SECCIONES} que justifican estructurar el documento"
+        )
+
+    salida = estructurado if elegido == "layout" else raw(doc)
+    salida["summary"]["auto"] = {
+        "elegido": elegido,
+        "motivo": motivo,
+        "titulos_detectados": titulos,
+    }
+    return salida

@@ -56,7 +56,7 @@ PAGINAS_LEGALES = {
 
 TMP_PREFIX = "pdf2json-"
 CHUNK = 1 << 20
-MODES = ("raw", "layout", "schema")
+MODES = ("auto", "raw", "layout", "schema")
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
@@ -126,7 +126,10 @@ def _convert_file(path: str, mode: str, rules: list[dict], max_pages: int) -> di
             f"El documento tiene {pages} páginas y el límite es {max_pages}."
         )
 
-    doc = extract.parse(path, with_tables=(mode == "layout"))
+    # auto necesita las tablas igual que layout: puede acabar devolviéndolo.
+    doc = extract.parse(path, with_tables=(mode in ("auto", "layout")))
+    if mode == "auto":
+        return modes.auto(doc)
     if mode == "raw":
         return modes.raw(doc)
     if mode == "layout":
@@ -298,7 +301,7 @@ def legal(request: Request, pagina: str):
 def convert(
     request: Request,
     files: list[UploadFile] = File(default=[]),
-    mode: str = Form("raw"),
+    mode: str = Form("auto"),
     rule_name: list[str] = Form(default=[]),
     rule_kind: list[str] = Form(default=[]),
     rule_pattern: list[str] = Form(default=[]),
