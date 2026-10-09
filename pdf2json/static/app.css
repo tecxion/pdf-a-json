@@ -701,3 +701,25 @@ a {
   font-size: 0.85rem;
   margin-bottom: 0.5rem;
 }
+
+.acciones-reglas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+#prueba-reglas {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.contexto {
+  margin-top: 0.25rem;
+  color: var(--text-dark);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}

@@ -159,6 +159,109 @@
     panel.appendChild(elemento("p", "error", mensaje));
   }
 
+  // --- probador de reglas -------------------------------------------------
+  // Dos pasos para no volver a subir el PDF cada vez que se retoca un patrón:
+  // primero se extrae el texto una vez, después se prueban las reglas sobre él.
+  var botonProbar = document.getElementById("probar-reglas");
+  var panelPrueba = document.getElementById("prueba-reglas");
+  var textoDelPdf = null;
+  var pdfDelTexto = null;
+
+  function reglasDelFormulario() {
+    var datos = new FormData();
+    formulario.querySelectorAll(".rule").forEach(function (fila) {
+      datos.append("rule_name", fila.querySelector('[name="rule_name"]').value);
+      datos.append("rule_kind", fila.querySelector('[name="rule_kind"]').value);
+      datos.append("rule_pattern", fila.querySelector('[name="rule_pattern"]').value);
+    });
+    return datos;
+  }
+
+  function pintarPrueba(resultados) {
+    panelPrueba.textContent = "";
+    panelPrueba.hidden = false;
+    var tabla = elemento("table", "campos");
+    resultados.forEach(function (resultado) {
+      var fila = elemento("tr");
+      fila.appendChild(elemento("th", null, resultado.name));
+      var celda = elemento("td", resultado.encontrado ? null : "sin-valor");
+      if (resultado.encontrado) {
+        celda.appendChild(elemento("strong", null, resultado.valor));
+        if (resultado.contexto) {
+          celda.appendChild(
+            elemento("div", "contexto", "…" + resultado.contexto + "…")
+          );
+        }
+      } else {
+        celda.textContent = resultado.error || "sin coincidencia";
+      }
+      fila.appendChild(celda);
+      tabla.appendChild(fila);
+    });
+    panelPrueba.appendChild(tabla);
+  }
+
+  function errorPrueba(mensaje) {
+    panelPrueba.textContent = "";
+    panelPrueba.hidden = false;
+    panelPrueba.appendChild(elemento("p", "error", mensaje));
+  }
+
+  if (botonProbar && panelPrueba) {
+    botonProbar.addEventListener("click", function () {
+      var entrada = formulario.querySelector('input[type="file"]');
+      var fichero = entrada.files && entrada.files[0];
+      if (!fichero) {
+        errorPrueba("Elige primero un PDF para probar las reglas sobre él.");
+        return;
+      }
+
+      botonProbar.disabled = true;
+      var original = botonProbar.textContent;
+      botonProbar.textContent = "Probando…";
+
+      var texto;
+      if (textoDelPdf !== null && pdfDelTexto === fichero) {
+        texto = Promise.resolve(textoDelPdf);
+      } else {
+        var subida = new FormData();
+        subida.append("files", fichero);
+        texto = fetch("/reglas/texto", { method: "POST", body: subida }).then(
+          function (respuesta) {
+            return respuesta.json().then(function (cuerpo) {
+              if (!respuesta.ok) {
+                throw new Error(cuerpo.error || "No se pudo leer el PDF.");
+              }
+              textoDelPdf = cuerpo.texto;
+              pdfDelTexto = fichero;
+              return cuerpo.texto;
+            });
+          }
+        );
+      }
+
+      texto
+        .then(function (contenido) {
+          var datos = reglasDelFormulario();
+          datos.append("texto", contenido);
+          return fetch("/reglas/probar", { method: "POST", body: datos });
+        })
+        .then(function (respuesta) {
+          return respuesta.json().then(function (cuerpo) {
+            if (!respuesta.ok) throw new Error(cuerpo.error || "No se pudo probar.");
+            pintarPrueba(cuerpo.resultados);
+          });
+        })
+        .catch(function (error) {
+          errorPrueba(error.message);
+        })
+        .finally(function () {
+          botonProbar.disabled = false;
+          botonProbar.textContent = original;
+        });
+    });
+  }
+
   formulario.addEventListener("submit", function (evento) {
     evento.preventDefault();
 

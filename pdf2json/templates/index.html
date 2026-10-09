@@ -100,14 +100,19 @@
 
         <div id="reglas"></div>
 
-        <button
-          type="button"
-          hx-get="/fields/row"
-          hx-target="#reglas"
-          hx-swap="beforeend"
-        >
-          + Añadir campo
-        </button>
+        <div class="acciones-reglas">
+          <button
+            type="button"
+            hx-get="/fields/row"
+            hx-target="#reglas"
+            hx-swap="beforeend"
+          >
+            + Añadir campo
+          </button>
+          <button type="button" id="probar-reglas">Probar sobre el PDF</button>
+        </div>
+
+        <div id="prueba-reglas" hidden></div>
       </fieldset>
 
       <button type="submit" class="primary">Convertir</button>

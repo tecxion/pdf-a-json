@@ -290,3 +290,41 @@ def auto(doc: Doc) -> dict:
         "titulos_detectados": titulos,
     }
     return salida
+
+
+CONTEXTO_CARACTERES = 60
+
+
+def probar_reglas(texto: str, rules: list[CompiledRule]) -> list[dict]:
+    """Aplica las reglas a un texto y devuelve qué captura cada una y de dónde.
+
+    Es lo que permite escribir un patrón mirando el documento en vez de a ciegas.
+    Comparte motor con schema(): si aquí coincide, en la conversión también.
+    """
+    resultados = []
+    for rule in rules:
+        entrada = {"name": rule.name, "kind": rule.kind, "pattern": rule.pattern}
+        try:
+            match = rule.compiled.search(texto, timeout=RULE_TIMEOUT_S)
+        except TimeoutError:
+            entrada.update(
+                valor=None,
+                encontrado=False,
+                error=f"la regla superó {RULE_TIMEOUT_S}s y se abortó",
+            )
+            resultados.append(entrada)
+            continue
+
+        if match is None:
+            entrada.update(valor=None, encontrado=False)
+        else:
+            valor = match.group(1)
+            inicio = max(0, match.start() - CONTEXTO_CARACTERES)
+            fin = min(len(texto), match.end() + CONTEXTO_CARACTERES)
+            entrada.update(
+                valor=valor.strip() if valor else None,
+                encontrado=valor is not None,
+                contexto=texto[inicio:fin].replace("\n", " "),
+            )
+        resultados.append(entrada)
+    return resultados

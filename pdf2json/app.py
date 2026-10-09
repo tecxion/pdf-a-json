@@ -54,6 +54,9 @@ MAX_CONCURRENTES = int(os.getenv("MAX_CONCURRENTES", "4"))
 # registro y las páginas sin texto siguen saliendo vacías.
 OCR_ENABLED = os.getenv("OCR_ENABLED", "0") == "1"
 OCR_IDIOMA = os.getenv("OCR_IDIOMA", "spa")
+# Texto que se devuelve al probador de reglas. Suficiente para escribir un
+# patrón mirando el documento, sin mandar una ley entera al navegador.
+MAX_TEXTO_PRUEBA = 200_000
 
 # Identificación del titular en las páginas legales. Van por entorno para que
 # quien aloje su propia instancia ponga la suya sin tocar el código.
@@ -205,6 +208,23 @@ def _convert_file(
     if mode == "layout":
         return modes.layout(doc)
     return modes.schema(doc, modes.compile_rules(rules))
+
+
+def _extraer_texto(path: str, max_pages: int, ocr: bool, ocr_idioma: str) -> str:
+    """Solo el texto, para el probador de reglas. Picklable, corre en el worker."""
+    from . import extract
+
+    paginas = extract.page_count(path)
+    if paginas > max_pages:
+        raise TooManyPages(
+            f"El documento tiene {paginas} páginas y el límite es {max_pages}."
+        )
+    doc = extract.parse(path, ocr=ocr, ocr_idioma=ocr_idioma)
+    if not any(page.has_text for page in doc.pages):
+        raise SinTexto(
+            "Este PDF no tiene texto: está escaneado como imagen."
+        )
+    return "\n".join(page.text for page in doc.pages)
 
 
 def _run_conversion(path: Path, mode: str, rules: list[dict]) -> dict:
@@ -511,6 +531,69 @@ def convert(
         return _zip_response(results, errors)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+@app.post("/reglas/texto")
+@limiter.limit(RATE_LIMIT)
+def reglas_texto(request: Request, files: list[UploadFile] = File(default=[])):
+    """Devuelve el texto de un PDF para poder escribir reglas mirándolo.
+
+    No guarda nada: el fichero se borra igual que en una conversión.
+    """
+    if not files or not files[0].filename:
+        return _error(request, "No has seleccionado ningún PDF.", 422)
+
+    tmpdir = Path(tempfile.mkdtemp(prefix=TMP_PREFIX))
+    try:
+        origen = tmpdir / "0.pdf"
+        _save_upload(files[0], origen)
+        with _plaza_de_conversion():
+            futuro = _get_pool().submit(
+                _extraer_texto, str(origen), MAX_PAGES, OCR_ENABLED, OCR_IDIOMA
+            )
+            texto = futuro.result(timeout=CONVERT_TIMEOUT_S)
+    except ConvertError as exc:
+        return _error(request, str(exc), exc.status)
+    except FutureTimeout:
+        _reset_pool()
+        return _error(request, f"La lectura superó {CONVERT_TIMEOUT_S}s.", 504)
+    except Exception as exc:  # noqa: BLE001 - frontera
+        mensaje, estado = _describe(exc)
+        return _error(request, mensaje, estado)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+    return JSONResponse(
+        {
+            "texto": texto[:MAX_TEXTO_PRUEBA],
+            "truncado": len(texto) > MAX_TEXTO_PRUEBA,
+            "caracteres": len(texto),
+        }
+    )
+
+
+@app.post("/reglas/probar")
+@limiter.limit(RATE_LIMIT)
+def reglas_probar(
+    request: Request,
+    texto: str = Form(""),
+    rule_name: list[str] = Form(default=[]),
+    rule_kind: list[str] = Form(default=[]),
+    rule_pattern: list[str] = Form(default=[]),
+):
+    """Prueba las reglas contra un texto ya extraído. No toca ficheros."""
+    if not texto.strip():
+        return _error(request, "No hay texto sobre el que probar.", 422)
+
+    reglas = _parse_rules(rule_name, rule_kind, rule_pattern)
+    if not reglas:
+        return _error(request, "No has definido ninguna regla.", 422)
+    try:
+        compiladas = modes.compile_rules(reglas)
+    except modes.RuleError as exc:
+        return _error(request, str(exc), 422)
+
+    return JSONResponse({"resultados": modes.probar_reglas(texto[:MAX_TEXTO_PRUEBA], compiladas)})
 
 
 @app.get("/fields/row", response_class=HTMLResponse)

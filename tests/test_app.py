@@ -751,3 +751,85 @@ def test_la_portada_trae_el_panel_de_resultado(client):
 
     assert 'id="resultado"' in cuerpo
     assert "/static/app.js" in cuerpo
+
+
+def test_reglas_texto_devuelve_el_texto_del_pdf(client, make_pdf):
+    path = make_pdf("ley.pdf", [[("Ley 12/2023, de prueba.", 11, False)]])
+
+    respuesta = client.post("/reglas/texto", files=[upload(path)])
+
+    assert respuesta.status_code == 200
+    cuerpo = respuesta.json()
+    assert "Ley 12/2023" in cuerpo["texto"]
+    assert cuerpo["truncado"] is False
+    assert not tmp_dirs()
+
+
+def test_reglas_texto_rechaza_un_pdf_escaneado(client, make_pdf):
+    path = make_pdf("escaneado.pdf", [[]])
+
+    respuesta = client.post("/reglas/texto", files=[upload(path)])
+
+    assert respuesta.status_code == 422
+    assert "escaneado" in respuesta.json()["error"]
+    assert not tmp_dirs()
+
+
+def test_reglas_texto_sin_fichero(client):
+    assert client.post("/reglas/texto").status_code == 422
+
+
+def test_probar_reglas_dice_que_captura_cada_una(client):
+    respuesta = client.post(
+        "/reglas/probar",
+        data={
+            "texto": "Boletin oficial. Ley 12/2023, de 24 de mayo. Fin.",
+            "rule_name": ["numero", "ausente"],
+            "rule_kind": ["regex", "label"],
+            "rule_pattern": [r"Ley\s+(\d+/\d{4})", "No aparece"],
+        },
+    )
+
+    assert respuesta.status_code == 200
+    resultados = respuesta.json()["resultados"]
+    assert resultados[0]["valor"] == "12/2023"
+    assert resultados[0]["encontrado"] is True
+    assert "Ley 12/2023" in resultados[0]["contexto"]
+    assert resultados[1]["encontrado"] is False
+    assert resultados[1]["valor"] is None
+
+
+def test_probar_reglas_rechaza_un_patron_invalido(client):
+    respuesta = client.post(
+        "/reglas/probar",
+        data={
+            "texto": "algo",
+            "rule_name": ["x"],
+            "rule_kind": ["regex"],
+            "rule_pattern": ["(sin cerrar"],
+        },
+    )
+
+    assert respuesta.status_code == 422
+    assert "inválido" in respuesta.json()["error"]
+
+
+def test_probar_reglas_sin_texto_o_sin_reglas(client):
+    assert client.post("/reglas/probar", data={"texto": "  "}).status_code == 422
+    assert client.post("/reglas/probar", data={"texto": "algo"}).status_code == 422
+
+
+def test_probar_una_regla_catastrofica_no_cuelga_el_servidor(client):
+    respuesta = client.post(
+        "/reglas/probar",
+        data={
+            "texto": "a" * 34 + "b",
+            "rule_name": ["bomba"],
+            "rule_kind": ["regex"],
+            "rule_pattern": [r"(a|aa)+$"],
+        },
+    )
+
+    assert respuesta.status_code == 200
+    assert respuesta.json()["resultados"][0]["encontrado"] is False
+    assert "abortó" in respuesta.json()["resultados"][0]["error"]

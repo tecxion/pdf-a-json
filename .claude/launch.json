@@ -6,7 +6,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "exec .venv/bin/uvicorn pdf2json.app:app --port ${PORT:-8000}"
+        "exec .venv/bin/uvicorn pdf2json.app:app --reload --port ${PORT:-8000}"
       ],
       "port": 8000,
       "autoPort": true
