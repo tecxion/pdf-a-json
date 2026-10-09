@@ -6,6 +6,7 @@ tempfile con prefijo TMP_PREFIX, borrado en `finally`.
 from __future__ import annotations
 
 import base64
+import csv
 import glob
 import io
 import json
@@ -16,7 +17,9 @@ import shutil
 import tempfile
 import zipfile
 import threading
+import time
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from concurrent.futures import TimeoutError as FutureTimeout
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
@@ -76,6 +79,7 @@ PAGINAS_LEGALES = {
 TMP_PREFIX = "pdf2json-"
 CHUNK = 1 << 20
 MODES = ("auto", "raw", "layout", "schema")
+FORMATOS = ("json", "csv")
 
 _plazas = threading.BoundedSemaphore(MAX_CONCURRENTES)
 
@@ -228,16 +232,37 @@ def _extraer_texto(path: str, max_pages: int, ocr: bool, ocr_idioma: str) -> str
 
 
 def _run_conversion(path: Path, mode: str, rules: list[dict]) -> dict:
-    future = _get_pool().submit(
-        _convert_file, str(path), mode, rules, MAX_PAGES, OCR_ENABLED, OCR_IDIOMA
-    )
-    try:
-        return future.result(timeout=CONVERT_TIMEOUT_S)
-    except FutureTimeout as exc:
-        _reset_pool()  # mata el proceso colgado
-        raise ConvertTimeout(
-            f"La conversión superó {CONVERT_TIMEOUT_S}s y se canceló."
-        ) from exc
+    """Convierte en un proceso aparte, reintentando una vez si el pool está roto.
+
+    Tras matar a un worker colgado, el pool puede quedar en estado roto y
+    tumbar la siguiente petición, que no tiene culpa de nada. Reintentar con un
+    pool nuevo es lo correcto; si vuelve a romperse, el fallo es real.
+    """
+    for intento in (1, 2):
+        try:
+            # submit() dentro del try: un pool roto falla ya al aceptar el trabajo,
+            # no solo al esperar el resultado.
+            future = _get_pool().submit(
+                _convert_file,
+                str(path),
+                mode,
+                rules,
+                MAX_PAGES,
+                OCR_ENABLED,
+                OCR_IDIOMA,
+            )
+            return future.result(timeout=CONVERT_TIMEOUT_S)
+        except FutureTimeout as exc:
+            _reset_pool()  # mata el proceso colgado
+            raise ConvertTimeout(
+                f"La conversión superó {CONVERT_TIMEOUT_S}s y se canceló."
+            ) from exc
+        except BrokenProcessPool:
+            log.warning("pool de conversión roto, reintento %d", intento)
+            _reset_pool()
+            if intento == 2:
+                raise
+    raise AssertionError("inalcanzable")
 
 
 @contextmanager
@@ -338,6 +363,43 @@ def _json_response(payload: dict, filename: str) -> Response:
     )
 
 
+def _csv_response(results: list[tuple[str, dict]], errors: list[dict]) -> Response:
+    """Un lote en modo campos es una tabla: una fila por documento.
+
+    Diez facturas con cuatro campos son mucho más útiles así que como diez
+    ficheros JSON que hay que juntar a mano.
+    """
+    columnas: list[str] = []
+    for _, payload in results:
+        for campo in payload["fields"]:
+            if campo not in columnas:
+                columnas.append(campo)
+
+    buffer = io.StringIO()
+    escritor = csv.writer(buffer)
+    escritor.writerow(["_fichero", *columnas, "_sin_coincidencia"])
+    for original, payload in results:
+        escritor.writerow(
+            [
+                original or "documento.pdf",
+                *[payload["fields"].get(c) or "" for c in columnas],
+                " ".join(payload["unmatched"]),
+            ]
+        )
+    for error in errors:
+        escritor.writerow(
+            [error["filename"] or "documento.pdf", *[""] * len(columnas), error["error"]]
+        )
+
+    # BOM para que Excel abra el UTF-8 sin destrozar los acentos.
+    cuerpo = "\ufeff" + buffer.getvalue()
+    return Response(
+        content=cuerpo.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"content-disposition": 'attachment; filename="pdf2json.csv"'},
+    )
+
+
 def _zip_response(results: list[tuple[str, dict]], errors: list[dict]) -> Response:
     buffer = io.BytesIO()
     used: set[str] = set()
@@ -366,11 +428,32 @@ def _zip_response(results: list[tuple[str, dict]], errors: list[dict]) -> Respon
 # --- aplicación ---------------------------------------------------------------
 
 
+# Un directorio de petición no puede sobrevivir tanto: el timeout son segundos.
+# Por debajo de esta edad se respeta, porque puede pertenecer a otro proceso que
+# está convirtiendo ahora mismo: otro worker de uvicorn, o el recargador en
+# desarrollo. Barrer sin mirar la edad le borra los ficheros a media conversión.
+EDAD_HUERFANO_S = 3600
+
+
+def _barrer_huerfanos(ahora: float | None = None) -> list[str]:
+    """Borra los temporales abandonados por un proceso muerto. Devuelve cuáles."""
+    ahora = time.time() if ahora is None else ahora
+    borrados = []
+    for ruta in glob.glob(os.path.join(tempfile.gettempdir(), TMP_PREFIX + "*")):
+        try:
+            if ahora - os.path.getmtime(ruta) < EDAD_HUERFANO_S:
+                continue
+        except OSError:
+            continue  # ya no está: otro proceso se le adelantó
+        shutil.rmtree(ruta, ignore_errors=True)
+        borrados.append(ruta)
+    return borrados
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # Barrido de huérfanos: lo que dejara un proceso muerto por SIGKILL o por OOM.
-    for stale in glob.glob(os.path.join(tempfile.gettempdir(), TMP_PREFIX + "*")):
-        shutil.rmtree(stale, ignore_errors=True)
+    for ruta in _barrer_huerfanos():
+        log.info("temporal huérfano borrado al arrancar: %s", ruta)
     yield
     _reset_pool()
 
@@ -474,6 +557,7 @@ def convert(
     request: Request,
     files: list[UploadFile] = File(default=[]),
     mode: str = Form("auto"),
+    formato: str = Form("json"),
     rule_name: list[str] = Form(default=[]),
     rule_kind: list[str] = Form(default=[]),
     rule_pattern: list[str] = Form(default=[]),
@@ -482,6 +566,14 @@ def convert(
     # espera bloqueante del pool de procesos no para el event loop.
     if mode not in MODES:
         return _error(request, f"Modo desconocido: {mode}.", 422)
+    if formato not in FORMATOS:
+        return _error(request, f"Formato desconocido: {formato}.", 422)
+    if formato == "csv" and mode != "schema":
+        return _error(
+            request,
+            "El CSV solo tiene sentido en el modo de campos: es una columna por campo.",
+            422,
+        )
     if not files or all(not f.filename for f in files):
         return _error(request, "No has seleccionado ningún PDF.", 422)
     if len(files) > MAX_FILES:
@@ -525,6 +617,8 @@ def convert(
             finally:
                 source.unlink(missing_ok=True)  # borra cuanto antes, no al final
 
+        if formato == "csv":
+            return _csv_response(results, errors)
         if len(files) == 1 and results:
             original, payload = results[0]
             return _json_response(payload, _safe_name(original, ".json"))

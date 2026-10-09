@@ -723,3 +723,18 @@ a {
   font-size: 0.72rem;
   line-height: 1.5;
 }
+
+.formato {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.9rem;
+  margin-top: 1rem;
+}
+
+.formato label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+}

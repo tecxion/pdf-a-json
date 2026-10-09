@@ -3,6 +3,7 @@ import io
 import json
 import os
 import zipfile
+import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -291,11 +292,33 @@ def test_tras_resetear_el_pool_sigue_sirviendo(client, make_pdf):
 def test_arranque_borra_temporales_huerfanos():
     huerfano = tempfile.mkdtemp(prefix=app_module.TMP_PREFIX)
     (Path(huerfano) / "basura.pdf").write_bytes(b"%PDF-1.7")
+    viejo = time.time() - app_module.EDAD_HUERFANO_S - 60
+    os.utime(huerfano, (viejo, viejo))
 
     with TestClient(app_module.app):
         pass
 
     assert not os.path.exists(huerfano)
+
+
+def test_el_barrido_respeta_los_temporales_recientes():
+    """Otro worker puede estar convirtiendo ahí ahora mismo.
+
+    Barrer sin mirar la edad le borra los ficheros a media conversión: pasaba
+    con el recargador de desarrollo y pasaría con un worker de uvicorn que
+    reaparece.
+    """
+    en_uso = tempfile.mkdtemp(prefix=app_module.TMP_PREFIX)
+    (Path(en_uso) / "0.pdf").write_bytes(b"%PDF-1.7")
+
+    try:
+        with TestClient(app_module.app):
+            pass
+
+        assert os.path.exists(en_uso)
+        assert os.path.exists(Path(en_uso) / "0.pdf")
+    finally:
+        shutil.rmtree(en_uso, ignore_errors=True)
 
 
 def test_rate_limit_devuelve_429(make_pdf, monkeypatch):
@@ -833,3 +856,127 @@ def test_probar_una_regla_catastrofica_no_cuelga_el_servidor(client):
     assert respuesta.status_code == 200
     assert respuesta.json()["resultados"][0]["encontrado"] is False
     assert "abortó" in respuesta.json()["resultados"][0]["error"]
+
+
+def test_un_pool_roto_se_recupera_solo(client, make_pdf, monkeypatch):
+    """Matar a un worker colgado no puede tumbar la petición siguiente."""
+    from concurrent.futures.process import BrokenProcessPool
+
+    original = app_module._get_pool
+    fallos = {"restantes": 1}
+
+    class PoolRoto:
+        def submit(self, *_args, **_kwargs):
+            fallos["restantes"] -= 1
+            raise BrokenProcessPool("pool roto")
+
+    def pool(*args, **kwargs):
+        return PoolRoto() if fallos["restantes"] > 0 else original(*args, **kwargs)
+
+    monkeypatch.setattr(app_module, "_get_pool", pool)
+    path = make_pdf("uno.pdf", [[("Hola", 11, False)]])
+
+    respuesta = client.post("/convert", data={"mode": "raw"}, files=[upload(path)])
+
+    assert respuesta.status_code == 200
+    assert fallos["restantes"] == 0  # falló una vez y el reintento funcionó
+    assert not tmp_dirs()
+
+
+def test_un_pool_roto_dos_veces_si_falla(client, make_pdf, monkeypatch):
+    from concurrent.futures.process import BrokenProcessPool
+
+    class PoolRoto:
+        def submit(self, *_args, **_kwargs):
+            raise BrokenProcessPool("pool roto")
+
+    monkeypatch.setattr(app_module, "_get_pool", lambda: PoolRoto())
+    path = make_pdf("uno.pdf", [[("Hola", 11, False)]])
+
+    respuesta = client.post("/convert", data={"mode": "raw"}, files=[upload(path)])
+
+    assert respuesta.status_code == 500
+    assert not tmp_dirs()
+
+
+def test_un_lote_en_modo_campos_se_descarga_como_csv(client, make_pdf):
+    """Diez facturas con cuatro campos son una tabla, no diez ficheros."""
+    una = make_pdf("f1.pdf", [[("Ley 12/2023 de prueba", 11, False)]])
+    otra = make_pdf("f2.pdf", [[("Ley 99/2024 de prueba", 11, False)]])
+
+    respuesta = client.post(
+        "/convert",
+        data={
+            "mode": "schema",
+            "formato": "csv",
+            "rule_name": ["numero"],
+            "rule_kind": ["regex"],
+            "rule_pattern": [r"Ley\s+(\d+/\d{4})"],
+        },
+        files=[upload(una), upload(otra)],
+    )
+
+    assert respuesta.status_code == 200
+    assert respuesta.headers["content-type"].startswith("text/csv")
+    assert "pdf2json.csv" in respuesta.headers["content-disposition"]
+    texto = respuesta.content.decode("utf-8")
+    assert texto.startswith("﻿")  # BOM: Excel y los acentos
+    filas = [f for f in texto.splitlines() if f.strip()]
+    assert filas[0].endswith("_fichero,numero,_sin_coincidencia".replace("_fichero,", "_fichero,"))
+    assert "f1.pdf,12/2023," in filas[1]
+    assert "f2.pdf,99/2024," in filas[2]
+    assert not tmp_dirs()
+
+
+def test_el_csv_incluye_los_ficheros_que_fallaron(client, make_pdf, tmp_path):
+    bueno = make_pdf("bueno.pdf", [[("Ley 12/2023", 11, False)]])
+    roto = tmp_path / "roto.pdf"
+    roto.write_bytes(b"%PDF-1.7\nbasura\n")
+
+    respuesta = client.post(
+        "/convert",
+        data={
+            "mode": "schema",
+            "formato": "csv",
+            "rule_name": ["numero"],
+            "rule_kind": ["regex"],
+            "rule_pattern": [r"Ley\s+(\d+/\d{4})"],
+        },
+        files=[upload(bueno), upload(roto)],
+    )
+
+    texto = respuesta.content.decode("utf-8")
+    assert "bueno.pdf,12/2023" in texto
+    assert "roto.pdf" in texto
+    assert "corrupto" in texto
+    assert not tmp_dirs()
+
+
+def test_el_csv_solo_tiene_sentido_en_modo_campos(client, make_pdf):
+    path = make_pdf("uno.pdf", [[("texto", 11, False)]])
+
+    respuesta = client.post(
+        "/convert", data={"mode": "raw", "formato": "csv"}, files=[upload(path)]
+    )
+
+    assert respuesta.status_code == 422
+    assert "modo de campos" in respuesta.json()["error"]
+    assert not tmp_dirs()
+
+
+def test_formato_desconocido(client, make_pdf):
+    path = make_pdf("uno.pdf", [[("texto", 11, False)]])
+
+    respuesta = client.post(
+        "/convert", data={"mode": "raw", "formato": "xml"}, files=[upload(path)]
+    )
+
+    assert respuesta.status_code == 422
+    assert "Formato desconocido" in respuesta.json()["error"]
+
+
+def test_el_formulario_ofrece_el_csv(client):
+    cuerpo = client.get("/").text
+
+    assert 'name="formato" value="json"' in cuerpo
+    assert 'name="formato" value="csv"' in cuerpo
