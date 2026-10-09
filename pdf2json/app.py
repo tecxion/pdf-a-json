@@ -39,6 +39,21 @@ MAX_PAGES = int(os.getenv("MAX_PAGES", "500"))
 RATE_LIMIT = os.getenv("RATE_LIMIT", "10/minute")
 CONVERT_TIMEOUT_S = int(os.getenv("CONVERT_TIMEOUT_S", "30"))
 
+# Identificación del titular en las páginas legales. Van por entorno para que
+# quien aloje su propia instancia ponga la suya sin tocar el código.
+TITULAR = {
+    "nombre": os.getenv("LEGAL_TITULAR", "TecXarT"),
+    "email": os.getenv("LEGAL_EMAIL", "tecxart@gmail.com"),
+}
+
+LEGAL_ACTUALIZADO = "2026-10-08"
+
+PAGINAS_LEGALES = {
+    "aviso-legal": "legal_aviso.html",
+    "privacidad": "legal_privacidad.html",
+    "condiciones": "legal_condiciones.html",
+}
+
 TMP_PREFIX = "pdf2json-"
 CHUNK = 1 << 20
 MODES = ("raw", "layout", "schema")
@@ -253,6 +268,28 @@ def health() -> dict:
 def index(request: Request):
     return templates.TemplateResponse(
         request, "index.html", {"templates_rules": TEMPLATES, "max_files": MAX_FILES}
+    )
+
+
+@app.get("/legal/{pagina}", response_class=HTMLResponse)
+def legal(request: Request, pagina: str):
+    plantilla = PAGINAS_LEGALES.get(pagina)
+    if plantilla is None:
+        return _error(request, f"Página legal desconocida: {pagina}.", 404)
+    return templates.TemplateResponse(
+        request,
+        plantilla,
+        {
+            "titular": TITULAR,
+            "actualizado": LEGAL_ACTUALIZADO,
+            "limites": {
+                "max_file_mb": MAX_FILE_BYTES // (1024 * 1024),
+                "max_files": MAX_FILES,
+                "max_pages": MAX_PAGES,
+                "rate_limit": RATE_LIMIT,
+                "timeout": CONVERT_TIMEOUT_S,
+            },
+        },
     )
 
 

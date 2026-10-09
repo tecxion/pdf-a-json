@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block titulo %}Aviso legal — pdf2json{% endblock %}
+{% block contenido %}
+<article class="legal">
+  <h1>Aviso <em>legal</em></h1>
+  <p class="actualizado">Última actualización: {{ actualizado }}</p>
+
+  <h2>Titular del sitio</h2>
+  <ul>
+    <li><strong>Titular:</strong> {{ titular.nombre }}</li>
+    <li><strong>Correo de contacto:</strong> {{ titular.email }}</li>
+    <li><strong>Sitio web:</strong> <a href="https://www.tecxart.es">tecxart.es</a></li>
+  </ul>
+
+  <h2>Objeto</h2>
+  <p>
+    Este sitio ofrece una herramienta gratuita que convierte ficheros PDF a
+    formato JSON. No requiere registro y no conserva los ficheros que se suben.
+  </p>
+
+  <h2>Propiedad intelectual</h2>
+  <p>
+    El código de la aplicación es software libre bajo licencia
+    <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a> y está
+    publicado en
+    <a href="https://github.com/tecxion/pdf-a-json">github.com/tecxion/pdf-a-json</a>.
+    Cualquiera puede usarlo, estudiarlo, modificarlo y redistribuirlo en los
+    términos de esa licencia, que obliga a publicar el código de las versiones
+    modificadas que se ofrezcan por red.
+  </p>
+  <p>
+    La denominación TecXarT, su logotipo y los elementos gráficos de la marca no
+    forman parte de esa licencia y pertenecen al titular.
+  </p>
+  <p>
+    El contenido de los PDF que subes sigue siendo tuyo. El titular no adquiere
+    ningún derecho sobre él ni lo conserva.
+  </p>
+
+  <h2>Responsabilidad</h2>
+  <p>
+    El servicio se presta tal cual y de forma gratuita. La conversión se basa en
+    la extracción automática de texto y en heurísticas de maquetación, de modo
+    que el resultado puede ser incompleto o contener errores. Comprueba siempre
+    el JSON antes de usarlo para algo que importe. El titular no responde de los
+    daños derivados del uso del servicio ni de la interpretación de sus
+    resultados.
+  </p>
+  <p>
+    El titular puede interrumpir, modificar o retirar el servicio en cualquier
+    momento y sin aviso previo.
+  </p>
+
+  <h2>Legislación aplicable</h2>
+  <p>
+    Esta relación se rige por la legislación española. Para cualquier
+    controversia, las partes se someten a los juzgados y tribunales que
+    correspondan conforme a derecho.
+  </p>
+</article>
+{% endblock %}

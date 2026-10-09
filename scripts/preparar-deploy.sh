@@ -49,6 +49,11 @@ MAX_FILES=10
 MAX_PAGES=500
 RATE_LIMIT=10/minute
 CONVERT_TIMEOUT_S=30
+
+# Identificación del titular en las páginas legales. Solo hace falta cambiarlas
+# si alojas tu propia instancia.
+LEGAL_TITULAR=TecXarT
+LEGAL_EMAIL=tecxart@gmail.com
 EOF
 
 cat > "$destino/VERSION" <<EOF

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block titulo %}Condiciones de uso — pdf2json{% endblock %}
+{% block contenido %}
+<article class="legal">
+  <h1>Condiciones de <em>uso</em></h1>
+  <p class="actualizado">Última actualización: {{ actualizado }}</p>
+
+  <h2>Qué es este servicio</h2>
+  <p>
+    Una herramienta web gratuita que convierte PDF a JSON. No hay registro, ni
+    cuenta, ni pago. Al usarla aceptas estas condiciones.
+  </p>
+
+  <h2>Qué puedes subir</h2>
+  <p>
+    Solo ficheros sobre los que tengas derecho a hacerlo. No subas contenido
+    ilícito, ni documentos con datos personales de terceros si no estás
+    legitimado para tratarlos. Eres responsable de lo que subes.
+  </p>
+
+  <h2>Límites técnicos</h2>
+  <p>
+    Para que el servicio siga en pie para todos, cada petición tiene límites:
+  </p>
+  <ul>
+    <li>{{ limites.max_file_mb }} MB como máximo por fichero.</li>
+    <li>{{ limites.max_files }} ficheros como máximo por petición.</li>
+    <li>{{ limites.max_pages }} páginas como máximo por documento.</li>
+    <li>{{ limites.rate_limit }} por dirección IP.</li>
+    <li>{{ limites.timeout }} segundos como máximo de proceso por fichero.</li>
+  </ul>
+  <p>
+    No intentes sortear estos límites ni automatizar el servicio de forma que
+    degrade su funcionamiento. Si lo haces, se puede bloquear el acceso desde tu
+    dirección IP.
+  </p>
+
+  <h2>Qué no se garantiza</h2>
+  <p>
+    La conversión es automática. El modo estructurado deduce títulos y secciones
+    a partir del tamaño de letra y de patrones de texto legal, y puede
+    equivocarse. Los PDF escaneados sin capa de texto salen vacíos, porque la
+    herramienta no hace reconocimiento óptico; cuando ocurre, el propio JSON lo
+    indica con <code>"ocr_required": true</code>.
+  </p>
+  <p>
+    No se garantiza que el servicio esté siempre disponible ni que el resultado
+    sea exacto o completo. No lo uses como única fuente para una decisión con
+    consecuencias.
+  </p>
+
+  <h2>Tus ficheros</h2>
+  <p>
+    Los PDF se borran del servidor en cuanto termina la conversión, también
+    cuando falla. No se conservan copias. Los detalles están en la
+    <a href="/legal/privacidad">política de privacidad</a>.
+  </p>
+
+  <h2>Alojarlo tú mismo</h2>
+  <p>
+    El código es libre y público. Si necesitas garantías de disponibilidad o
+    tratar documentos confidenciales, despliega tu propia instancia desde
+    <a href="https://github.com/tecxion/pdf-a-json">el repositorio</a>.
+  </p>
+
+  <h2>Cambios</h2>
+  <p>
+    Estas condiciones pueden cambiar. La versión vigente es siempre la publicada
+    en esta página, con su fecha de actualización.
+  </p>
+</article>
+{% endblock %}

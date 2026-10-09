@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block titulo %}pdf2json{% endblock %}</title>
+    <link rel="stylesheet" href="/static/app.css" />
+    {% block scripts %}{% endblock %}
+  </head>
+  <body>
+    <header class="barra">
+      <a class="marca" href="/">TecXarT</a>
+      <a class="volver" href="https://www.tecxart.es">Volver a tecxart</a>
+    </header>
+
+    <main>{% block contenido %}{% endblock %}</main>
+
+    <footer class="pie">
+      <nav class="pie-enlaces" aria-label="Enlaces legales">
+        <a href="/legal/aviso-legal">Aviso legal</a>
+        <a href="/legal/privacidad">Privacidad</a>
+        <a href="/legal/condiciones">Condiciones de uso</a>
+        <a href="https://github.com/tecxion/pdf-a-json">Código fuente</a>
+      </nav>
+      <p>
+        Software libre bajo licencia AGPL-3.0. Esta web no usa cookies ni
+        herramientas de analítica.
+      </p>
+    </footer>
+  </body>
+</html>

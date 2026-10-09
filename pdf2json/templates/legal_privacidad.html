@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block titulo %}Política de privacidad — pdf2json{% endblock %}
+{% block contenido %}
+<article class="legal">
+  <h1>Política de <em>privacidad</em></h1>
+  <p class="actualizado">Última actualización: {{ actualizado }}</p>
+
+  <h2>En corto</h2>
+  <p>
+    Tu PDF se procesa y se borra. No se guarda, no se lee para otra cosa, no se
+    cede a nadie y no sale de este servidor. No hay cuentas, ni cookies, ni
+    analítica, ni publicidad. Lo único que queda registrado es lo que cualquier
+    servidor web anota para funcionar: la dirección IP de la petición.
+  </p>
+
+  <h2>Responsable del tratamiento</h2>
+  <ul>
+    <li><strong>Responsable:</strong> {{ titular.nombre }}</li>
+    <li><strong>Correo:</strong> {{ titular.email }}</li>
+  </ul>
+
+  <h2>Qué se trata, para qué y durante cuánto</h2>
+
+  <h3>El contenido de los PDF que subes</h3>
+  <p>
+    <strong>Para qué:</strong> convertirlo al JSON que descargas, que es lo que
+    has pedido.<br />
+    <strong>Base jurídica:</strong> la ejecución de ese servicio a petición tuya
+    (artículo 6.1.b del RGPD).<br />
+    <strong>Cuánto se conserva:</strong> lo que dura la conversión. El fichero se
+    escribe en un directorio temporal y se borra al terminar, también si la
+    conversión falla, si expira el tiempo máximo o si cierras la pestaña a mitad.
+    En el despliegue recomendado ese directorio vive en memoria RAM y nunca toca
+    el disco. El JSON resultante tampoco se conserva: se envía a tu navegador y
+    se descarta.
+  </p>
+  <p>
+    Si el PDF contiene datos personales, los tratas tú como responsable y este
+    servicio actúa como mero intermediario técnico durante esos segundos. No se
+    indexa, no se analiza y no se usa para entrenar nada.
+  </p>
+
+  <h3>Tu dirección IP</h3>
+  <p>
+    <strong>Para qué:</strong> limitar el número de peticiones por minuto, para
+    que nadie tumbe el servicio, y mantener los registros técnicos de acceso que
+    permiten detectar errores y abusos.<br />
+    <strong>Base jurídica:</strong> el interés legítimo en mantener el servicio
+    disponible y seguro (artículo 6.1.f del RGPD).<br />
+    <strong>Cuánto se conserva:</strong> el contador de peticiones vive solo en
+    la memoria del proceso y desaparece al minuto. Los registros de acceso del
+    servidor web sí anotan la IP, la fecha, la ruta y el código de respuesta, y
+    se conservan el tiempo necesario para esas finalidades.
+  </p>
+  <p>
+    Esos registros <strong>no</strong> guardan el nombre del fichero que subes,
+    ni su contenido, ni los campos extraídos, ni los patrones que escribes.
+  </p>
+
+  <h2>Cookies y seguimiento</h2>
+  <p>
+    Esta web no instala cookies ni usa el almacenamiento local de tu navegador.
+    No hay analítica, ni píxeles, ni botones de redes sociales. Las tipografías
+    se sirven desde este mismo servidor y no desde un proveedor externo, así que
+    tu navegador no contacta con terceros al cargar la página. Por eso no verás
+    ningún aviso de cookies: no hay nada que consentir.
+  </p>
+
+  <h2>Quién más ve tus datos</h2>
+  <p>
+    Nadie. No hay cesiones ni transferencias internacionales. El único tercero
+    implicado es el proveedor que aloja el servidor, que actúa como encargado del
+    tratamiento y tiene acceso a la infraestructura, no al contenido de las
+    conversiones, que para entonces ya se ha borrado.
+  </p>
+
+  <h2>Tus derechos</h2>
+  <p>
+    Puedes solicitar acceso, rectificación, supresión, limitación, oposición y
+    portabilidad escribiendo a
+    {{ titular.email }}. En la práctica hay poco que
+    ejercer, porque no se conserva información que te identifique más allá de los
+    registros técnicos descritos arriba; para localizarlos haría falta la fecha,
+    la hora aproximada y tu dirección IP.
+  </p>
+  <p>
+    Si consideras que el tratamiento no se ajusta a la normativa, puedes
+    reclamar ante la Agencia Española de Protección de Datos
+    (<a href="https://www.aepd.es">aepd.es</a>).
+  </p>
+
+  <h2>Si prefieres no depender de nadie</h2>
+  <p>
+    El código es libre y público. Puedes desplegar tu propia instancia desde
+    <a href="https://github.com/tecxion/pdf-a-json">el repositorio</a> y que los
+    documentos no salgan de tu máquina.
+  </p>
+</article>
+{% endblock %}

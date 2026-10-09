@@ -1,16 +1,7 @@
-<!doctype html>
-<html lang="es">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Error — pdf2json</title>
-    <link rel="stylesheet" href="/static/app.css" />
-  </head>
-  <body>
-    <main>
-      <h1>No se pudo <em>convertir</em></h1>
-      <p class="lead error">{{ message }}</p>
-      <p class="lead"><a href="/">Volver e intentarlo de nuevo</a></p>
-    </main>
-  </body>
-</html>
+{% extends "base.html" %}
+{% block titulo %}Error — pdf2json{% endblock %}
+{% block contenido %}
+<h1>No se pudo <em>convertir</em></h1>
+<p class="lead error">{{ message }}</p>
+<p class="lead"><a href="/">Volver e intentarlo de nuevo</a></p>
+{% endblock %}

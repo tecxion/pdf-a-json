@@ -4,6 +4,7 @@ import json
 import os
 import zipfile
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -359,8 +360,13 @@ def test_reset_pool_mata_a_los_workers():
 
     app_module._reset_pool()
 
+    # No basta con join(): el hilo de gestión del executor también los está
+    # recogiendo, y quién gana la carrera varía entre ejecuciones. Lo que importa
+    # es que acaben muertos, no cuándo exactamente.
+    limite = time.monotonic() + 10
     for worker in workers:
-        worker.join(timeout=5)
+        while worker.is_alive() and time.monotonic() < limite:
+            time.sleep(0.05)
         assert not worker.is_alive()
 
 
@@ -467,3 +473,55 @@ def test_la_pagina_carga_el_script_de_descarga(client):
 def test_convert_no_responde_a_get(client):
     """Deja constancia del 405 que provocaba el fallo: /convert es solo POST."""
     assert client.get("/convert").status_code == 405
+
+
+def test_todas_las_paginas_legales_responden(client):
+    for pagina in app_module.PAGINAS_LEGALES:
+        respuesta = client.get(f"/legal/{pagina}")
+
+        assert respuesta.status_code == 200, pagina
+        assert "text/html" in respuesta.headers["content-type"]
+
+
+def test_pagina_legal_desconocida_devuelve_404(client):
+    assert client.get("/legal/inventada").status_code == 404
+
+
+def test_las_legales_identifican_al_titular(client):
+    """Sin titular ni correo de contacto, nadie puede ejercer sus derechos."""
+    for pagina in ("aviso-legal", "privacidad"):
+        texto = client.get(f"/legal/{pagina}").text
+
+        assert app_module.TITULAR["nombre"] in texto, pagina
+        assert app_module.TITULAR["email"] in texto, pagina
+
+
+def test_el_titular_se_puede_cambiar_por_entorno(client, monkeypatch):
+    monkeypatch.setitem(app_module.TITULAR, "nombre", "Otro Titular")
+    monkeypatch.setitem(app_module.TITULAR, "email", "contacto@ejemplo.test")
+
+    texto = client.get("/legal/privacidad").text
+
+    assert "Otro Titular" in texto
+    assert "contacto@ejemplo.test" in texto
+
+
+def test_las_condiciones_muestran_los_limites_reales(client, monkeypatch):
+    """Si los límites cambian por entorno, las condiciones no pueden mentir."""
+    monkeypatch.setattr(app_module, "MAX_FILES", 3)
+
+    texto = " ".join(client.get("/legal/condiciones").text.split())
+
+    assert "3 ficheros como máximo" in texto
+
+
+def test_la_barra_y_el_pie_estan_en_todas_las_paginas(client):
+    rutas = ["/", "/legal/aviso-legal", "/legal/privacidad", "/legal/condiciones"]
+
+    for ruta in rutas:
+        texto = client.get(ruta).text
+
+        assert "TecXarT" in texto, ruta
+        assert "https://www.tecxart.es" in texto, ruta
+        assert "https://github.com/tecxion/pdf-a-json" in texto, ruta
+        assert "/legal/privacidad" in texto, ruta

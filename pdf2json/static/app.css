@@ -44,7 +44,7 @@
 
 body {
   margin: 0;
-  padding: 4rem 1.5rem 5rem;
+  padding: 0 1.5rem 3rem;
   font-family: var(--font-sans);
   font-size: 1rem;
   line-height: 1.6;
@@ -63,7 +63,134 @@ body {
 main {
   max-width: 46rem;
   margin: 0 auto;
+  padding-top: 3.5rem;
 }
+
+/* --- barra superior ------------------------------------------------------ */
+
+.barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.marca {
+  color: var(--foreground);
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+
+.volver {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: var(--transition);
+}
+
+.volver:hover {
+  background: var(--accent-hover);
+}
+
+/* --- pie ----------------------------------------------------------------- */
+
+.pie {
+  max-width: 46rem;
+  margin: 3rem auto 0;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-dark);
+  font-size: 0.8rem;
+}
+
+.pie-enlaces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.pie-enlaces a {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: var(--transition);
+}
+
+.pie-enlaces a:hover {
+  color: var(--accent);
+}
+
+.pie p {
+  margin: 0;
+  max-width: 42rem;
+}
+
+/* --- páginas legales ------------------------------------------------------ */
+
+.legal {
+  max-width: 40rem;
+}
+
+.legal h1 {
+  font-size: clamp(2rem, 5vw, 2.75rem);
+}
+
+.legal h2 {
+  margin: 2.25rem 0 0.5rem;
+  color: var(--foreground);
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.legal h3 {
+  margin: 1.5rem 0 0.4rem;
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.legal p,
+.legal li {
+  color: var(--text-muted);
+}
+
+.legal ul {
+  padding-left: 1.1rem;
+}
+
+.legal li {
+  margin-bottom: 0.3rem;
+}
+
+.legal strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.actualizado {
+  color: var(--text-dark);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
 
 /* --- cabecera ------------------------------------------------------------ */
 
@@ -407,12 +534,18 @@ a {
 
 @media (max-width: 40rem) {
   body {
-    padding: 2.5rem 1rem 3rem;
+    padding: 0 1rem 2rem;
   }
   /* Nombre y tipo en una línea; el patrón, que es lo largo, en la siguiente
      con el botón de quitar al lado. */
   .rule {
     grid-template-columns: 1fr auto;
+  }
+  .barra {
+    padding: 1rem 0;
+  }
+  main {
+    padding-top: 2.5rem;
   }
   form {
     padding: 1.25rem;

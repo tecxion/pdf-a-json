@@ -1,129 +1,117 @@
-<!doctype html>
-<html lang="es">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>pdf2json — convierte PDF a JSON</title>
-    <link rel="stylesheet" href="/static/app.css" />
-    <script src="/static/htmx.min.js" defer></script>
-    <script src="/static/app.js" defer></script>
-  </head>
-  <body>
-    <main>
-      <p class="badge">Nada se guarda</p>
-      <h1>PDF a <em>JSON</em></h1>
-      <p class="lead">
-        Sube uno o varios PDF y descarga el JSON. Tu fichero se borra del servidor
-        en cuanto termina la conversión: <strong>no queda copia de nada</strong>.
-      </p>
+{% extends "base.html" %}
+{% block titulo %}pdf2json — convierte PDF a JSON{% endblock %}
+{% block scripts %}
+<script src="/static/htmx.min.js" defer></script>
+<script src="/static/app.js" defer></script>
+{% endblock %}
+{% block contenido %}
+    <p class="badge">Nada se guarda</p>
+    <h1>PDF a <em>JSON</em></h1>
+    <p class="lead">
+      Sube uno o varios PDF y descarga el JSON. Tu fichero se borra del servidor
+      en cuanto termina la conversión: <strong>no queda copia de nada</strong>.
+    </p>
 
-      <form action="/convert" method="post" enctype="multipart/form-data">
-        <fieldset>
-          <legend>Ficheros</legend>
-          <input
-            type="file"
-            name="files"
-            accept="application/pdf"
-            multiple
-            required
-            aria-label="PDF a convertir"
-          />
-          <p class="hint">
-            Hasta {{ max_files }} PDF por vez. Varios ficheros se descargan en un ZIP.
-          </p>
-        </fieldset>
+    <form action="/convert" method="post" enctype="multipart/form-data">
+      <fieldset>
+        <legend>Ficheros</legend>
+        <input
+          type="file"
+          name="files"
+          accept="application/pdf"
+          multiple
+          required
+          aria-label="PDF a convertir"
+        />
+        <p class="hint">
+          Hasta {{ max_files }} PDF por vez. Varios ficheros se descargan en un ZIP.
+        </p>
+      </fieldset>
 
-        <fieldset>
-          <legend>Modo</legend>
-          <div class="modos">
-            <label class="modo">
-              <input
-                type="radio"
-                name="mode"
-                value="raw"
-                checked
-                onchange="document.getElementById('panel-campos').hidden = true"
-              />
-              <strong>Texto por página</strong>
-              <span>El texto tal cual, página a página.</span>
-            </label>
-            <label class="modo">
-              <input
-                type="radio"
-                name="mode"
-                value="layout"
-                onchange="document.getElementById('panel-campos').hidden = true"
-              />
-              <strong>Estructurado</strong>
-              <span>Títulos, secciones y tablas anidadas.</span>
-            </label>
-            <label class="modo">
-              <input
-                type="radio"
-                name="mode"
-                value="schema"
-                onchange="document.getElementById('panel-campos').hidden = false"
-              />
-              <strong>Campos</strong>
-              <span>Solo los datos que indiques.</span>
-            </label>
-          </div>
-        </fieldset>
+      <fieldset>
+        <legend>Modo</legend>
+        <div class="modos">
+          <label class="modo">
+            <input
+              type="radio"
+              name="mode"
+              value="raw"
+              checked
+              onchange="document.getElementById('panel-campos').hidden = true"
+            />
+            <strong>Texto por página</strong>
+            <span>El texto tal cual, página a página.</span>
+          </label>
+          <label class="modo">
+            <input
+              type="radio"
+              name="mode"
+              value="layout"
+              onchange="document.getElementById('panel-campos').hidden = true"
+            />
+            <strong>Estructurado</strong>
+            <span>Títulos, secciones y tablas anidadas.</span>
+          </label>
+          <label class="modo">
+            <input
+              type="radio"
+              name="mode"
+              value="schema"
+              onchange="document.getElementById('panel-campos').hidden = false"
+            />
+            <strong>Campos</strong>
+            <span>Solo los datos que indiques.</span>
+          </label>
+        </div>
+      </fieldset>
 
-        <fieldset id="panel-campos" hidden>
-          <legend>Campos a extraer</legend>
-          <p class="hint">
-            <code>regex</code>: patrón con un grupo de captura; el valor es ese grupo.
-            <code>etiqueta</code>: texto literal; el valor es el resto de la línea.
-          </p>
+      <fieldset id="panel-campos" hidden>
+        <legend>Campos a extraer</legend>
+        <p class="hint">
+          <code>regex</code>: patrón con un grupo de captura; el valor es ese grupo.
+          <code>etiqueta</code>: texto literal; el valor es el resto de la línea.
+        </p>
 
-          <div class="plantillas" role="group" aria-label="Plantillas de reglas">
-            {% for key, template in templates_rules.items() %}
-            <button
-              type="button"
-              hx-get="/fields/template/{{ key }}"
-              hx-target="#reglas"
-              hx-swap="innerHTML"
-            >
-              {{ template.label }}
-            </button>
-            {% endfor %}
-          </div>
-
-          <div id="reglas"></div>
-
+        <div class="plantillas" role="group" aria-label="Plantillas de reglas">
+          {% for key, template in templates_rules.items() %}
           <button
             type="button"
-            hx-get="/fields/row"
+            hx-get="/fields/template/{{ key }}"
             hx-target="#reglas"
-            hx-swap="beforeend"
+            hx-swap="innerHTML"
           >
-            + Añadir campo
+            {{ template.label }}
           </button>
-        </fieldset>
+          {% endfor %}
+        </div>
 
-        <button type="submit" class="primary">Convertir y descargar</button>
-      </form>
+        <div id="reglas"></div>
 
-      <section class="privacidad">
-        <h2>Privacidad</h2>
-        <p>
-          Los PDF se escriben en un directorio temporal del servidor y se borran al
-          terminar la conversión, también si falla. No hay base de datos ni copias. Los
-          registros del servidor no guardan el nombre del fichero, su contenido ni los
-          patrones que escribes. Las fuentes de esta página se sirven desde este mismo
-          servidor: tu navegador no contacta con nadie más.
-        </p>
-        <p>
-          Si el JSON trae <code>"ocr_required": true</code> en alguna página, ese PDF
-          está escaneado como imagen: esta herramienta no hace OCR y esa página sale
-          vacía.
-        </p>
-        <p>
-          Código abierto, licencia AGPL-3.0. Hecho por
-          <a href="https://tecxart.es">Tecxart</a>.
-        </p>
-      </section>
-    </main>
-  </body>
-</html>
+        <button
+          type="button"
+          hx-get="/fields/row"
+          hx-target="#reglas"
+          hx-swap="beforeend"
+        >
+          + Añadir campo
+        </button>
+      </fieldset>
+
+      <button type="submit" class="primary">Convertir y descargar</button>
+    </form>
+
+    <section class="privacidad">
+    <h2>Tus ficheros</h2>
+    <p>
+      Los PDF se escriben en un directorio temporal del servidor y se borran al
+      terminar la conversión, también si falla. No hay base de datos ni copias, y
+      los registros no guardan el nombre del fichero ni su contenido. El detalle
+      está en la <a href="/legal/privacidad">política de privacidad</a>.
+    </p>
+    <p>
+      Si el JSON trae <code>"ocr_required": true</code> en alguna página, ese PDF
+      está escaneado como imagen: la herramienta no hace OCR y esa página sale
+      vacía.
+    </p>
+  </section>
+{% endblock %}
