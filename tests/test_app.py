@@ -559,3 +559,85 @@ def test_el_modo_por_defecto_es_auto(client, make_pdf):
     body = json.loads(response.content)
     assert body["summary"]["auto"]["elegido"] == "raw"
     assert not tmp_dirs()
+
+
+def test_una_peticion_enorme_se_corta_antes_de_leer_el_cuerpo(client, monkeypatch):
+    """Starlette vuelca las subidas a /tmp al parsear: hay que cortar antes."""
+    monkeypatch.setattr(app_module, "MAX_REQUEST_BYTES", 1024)
+
+    respuesta = client.post(
+        "/convert",
+        data={"mode": "raw"},
+        files=[("files", ("grande.pdf", b"%PDF-1.7" + b"x" * 5000, "application/pdf"))],
+    )
+
+    assert respuesta.status_code == 413
+    assert "MB" in respuesta.text
+    assert not tmp_dirs()
+
+
+def test_sin_plazas_libres_responde_503_y_no_cuelga(client, make_pdf):
+    path = make_pdf("uno.pdf", [[("A", 11, False)]])
+    ocupadas = [app_module._plazas.acquire(blocking=False) for _ in range(app_module.MAX_CONCURRENTES)]
+    assert all(ocupadas)
+
+    try:
+        respuesta = client.post("/convert", data={"mode": "raw"}, files=[upload(path)])
+    finally:
+        for _ in ocupadas:
+            app_module._plazas.release()
+
+    assert respuesta.status_code == 503
+    assert "minuto" in respuesta.text
+    assert not tmp_dirs()
+
+
+def test_la_plaza_se_libera_aunque_la_conversion_falle(client, tmp_path):
+    """Un semáforo que no se libera deja el servicio muerto tras unos errores."""
+    roto = tmp_path / "roto.pdf"
+    roto.write_bytes(b"%PDF-1.7\nbasura\n")
+
+    for _ in range(app_module.MAX_CONCURRENTES + 2):
+        app_module.limiter.reset()
+        assert client.post("/convert", data={"mode": "raw"}, files=[upload(roto)]).status_code == 422
+
+    assert app_module._plazas.acquire(blocking=False)
+    app_module._plazas.release()
+
+
+def test_health_comprueba_una_conversion_real(client):
+    respuesta = client.get("/health")
+
+    assert respuesta.status_code == 200
+    assert respuesta.json() == {"status": "ok"}
+    assert not tmp_dirs()
+
+
+def test_health_avisa_cuando_la_conversion_esta_rota(client, monkeypatch):
+    def pool_roto(*_args, **_kwargs):
+        raise RuntimeError("pool caído")
+
+    monkeypatch.setattr(app_module, "_run_conversion", pool_roto)
+
+    respuesta = client.get("/health")
+
+    assert respuesta.status_code == 503
+    assert respuesta.json() == {"status": "degraded"}
+    assert not tmp_dirs()
+
+
+def test_cabeceras_de_seguridad_en_todas_las_respuestas(client):
+    for ruta in ("/", "/legal/privacidad", "/health"):
+        cabeceras = client.get(ruta).headers
+
+        assert cabeceras["x-content-type-options"] == "nosniff"
+        assert cabeceras["referrer-policy"] == "no-referrer"
+        assert cabeceras["x-frame-options"] == "DENY"
+        assert "default-src 'self'" in cabeceras["content-security-policy"]
+
+
+def test_el_favicon_existe_y_la_pagina_lo_enlaza(client):
+    assert "/static/favicon.svg" in client.get("/").text
+    respuesta = client.get("/static/favicon.svg")
+    assert respuesta.status_code == 200
+    assert "svg" in respuesta.headers["content-type"]

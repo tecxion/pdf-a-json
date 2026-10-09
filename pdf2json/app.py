@@ -5,6 +5,7 @@ tempfile con prefijo TMP_PREFIX, borrado en `finally`.
 """
 from __future__ import annotations
 
+import base64
 import glob
 import io
 import json
@@ -14,9 +15,10 @@ import re
 import shutil
 import tempfile
 import zipfile
+import threading
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
@@ -38,6 +40,15 @@ MAX_FILES = int(os.getenv("MAX_FILES", "10"))
 MAX_PAGES = int(os.getenv("MAX_PAGES", "500"))
 RATE_LIMIT = os.getenv("RATE_LIMIT", "10/minute")
 CONVERT_TIMEOUT_S = int(os.getenv("CONVERT_TIMEOUT_S", "30"))
+# Tope de la petición entera. No basta con el límite por fichero: Starlette
+# vuelca cada subida de más de 1 MB a /tmp mientras parsea el formulario, o sea
+# antes de que este código llegue a validar nada. Con /tmp montado en tmpfs eso
+# es RAM del servidor, así que el corte tiene que ocurrir antes de leer el cuerpo.
+MAX_REQUEST_MB = int(os.getenv("MAX_REQUEST_MB", "60"))
+MAX_REQUEST_BYTES = MAX_REQUEST_MB * 1024 * 1024
+# Conversiones simultáneas. Por encima se rechaza con 503 en vez de encolar
+# peticiones que acabarían todas en timeout.
+MAX_CONCURRENTES = int(os.getenv("MAX_CONCURRENTES", "4"))
 
 # Identificación del titular en las páginas legales. Van por entorno para que
 # quien aloje su propia instancia ponga la suya sin tocar el código.
@@ -57,6 +68,28 @@ PAGINAS_LEGALES = {
 TMP_PREFIX = "pdf2json-"
 CHUNK = 1 << 20
 MODES = ("auto", "raw", "layout", "schema")
+
+_plazas = threading.BoundedSemaphore(MAX_CONCURRENTES)
+
+# PDF mínimo de una página, para que /health compruebe una conversión real.
+# Va incrustado porque app.py no puede importar pymupdf para fabricarlo.
+_PDF_SONDA = base64.b64decode(
+    "JVBERi0xLjcKJcK1wrYKJSBXcml0dGVuIGJ5IE11UERGIDEuMjguMgoKMSAwIG9iago8PC9UeXBl"
+    "L0NhdGFsb2cvUGFnZXMgMiAwIFIvSW5mbzw8L1Byb2R1Y2VyKE11UERGIDEuMjguMik+Pj4+CmVu"
+    "ZG9iagoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0NvdW50IDEvS2lkc1s0IDAgUl0+PgplbmRvYmoK"
+    "CjMgMCBvYmoKPDwvRm9udDw8L2hlbHYgNSAwIFI+Pj4+CmVuZG9iagoKNCAwIG9iago8PC9UeXBl"
+    "L1BhZ2UvTWVkaWFCb3hbMCAwIDcyIDcyXS9Sb3RhdGUgMC9SZXNvdXJjZXMgMyAwIFIvUGFyZW50"
+    "IDIgMCBSL0NvbnRlbnRzWzYgMCBSXT4+CmVuZG9iagoKNSAwIG9iago8PC9UeXBlL0ZvbnQvU3Vi"
+    "dHlwZS9UeXBlMS9CYXNlRm9udC9IZWx2ZXRpY2EvRW5jb2RpbmcvV2luQW5zaUVuY29kaW5nPj4K"
+    "ZW5kb2JqCgo2IDAgb2JqCjw8L0xlbmd0aCA1Ni9GaWx0ZXIvRmxhdGVEZWNvZGU+PgpzdHJlYW0K"
+    "eJzjKuRyCuEyVDAAQkMFQwMFUyOFkFwu/YzUnDIFC4WQNIVoG7M0syS72BAvLtcQrkAuABFIC3cK"
+    "ZW5kc3RyZWFtCmVuZG9iagoKeHJlZgowIDcKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDQy"
+    "IDAwMDAwIG4gCjAwMDAwMDAxMjAgMDAwMDAgbiAKMDAwMDAwMDE3MiAwMDAwMCBuIAowMDAwMDAw"
+    "MjEzIDAwMDAwIG4gCjAwMDAwMDAzMTggMDAwMDAgbiAKMDAwMDAwMDQwNyAwMDAwMCBuIAoKdHJh"
+    "aWxlcgo8PC9TaXplIDcvUm9vdCAxIDAgUi9JRFs8QzJCQTUzNkJDMkE3NjUyRDUyQzJBRDE3MTYz"
+    "OEMyQTI+PEYwQjM0OUNCMDY5NDMyMUNCNzgwNkJEQjI3RDQyMzBEPl0+PgpzdGFydHhyZWYKNTMx"
+    "CiUlRU9GCg=="
+)
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
@@ -83,6 +116,14 @@ class NotPdf(ConvertError):
 
 class ConvertTimeout(ConvertError):
     status = 504
+
+
+class Ocupado(ConvertError):
+    status = 503
+
+
+class PeticionDemasiadoGrande(ConvertError):
+    status = 413
 
 
 # --- pool de procesos ---------------------------------------------------------
@@ -146,6 +187,25 @@ def _run_conversion(path: Path, mode: str, rules: list[dict]) -> dict:
         raise ConvertTimeout(
             f"La conversión superó {CONVERT_TIMEOUT_S}s y se canceló."
         ) from exc
+
+
+@contextmanager
+def _plaza_de_conversion():
+    """Limita las conversiones simultáneas.
+
+    Sin esto, con el pool lleno las peticiones se encolan y acaban todas en
+    timeout, incluida la primera que llegó. Es más honesto decir que no hay
+    sitio ahora mismo.
+    """
+    if not _plazas.acquire(blocking=False):
+        raise Ocupado(
+            "El servidor está convirtiendo todo lo que puede ahora mismo. "
+            "Inténtalo de nuevo en un minuto."
+        )
+    try:
+        yield
+    finally:
+        _plazas.release()
 
 
 # --- utilidades ---------------------------------------------------------------
@@ -250,6 +310,35 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="pdf2json", lifespan=lifespan)
 app.state.limiter = limiter
+
+
+@app.middleware("http")
+async def _guardar_el_servidor(request: Request, call_next):
+    """Corta las peticiones enormes antes de leer el cuerpo y pone cabeceras.
+
+    El orden importa: si se deja pasar a Starlette, para cuando el endpoint se
+    ejecuta las subidas ya están escritas en /tmp.
+    """
+    longitud = request.headers.get("content-length")
+    if longitud and longitud.isdigit() and int(longitud) > MAX_REQUEST_BYTES:
+        respuesta = _error(
+            request,
+            f"La petición entera supera {MAX_REQUEST_MB} MB. Sube menos ficheros de una vez.",
+            PeticionDemasiadoGrande.status,
+        )
+    else:
+        respuesta = await call_next(request)
+
+    respuesta.headers["X-Content-Type-Options"] = "nosniff"
+    respuesta.headers["Referrer-Policy"] = "no-referrer"
+    respuesta.headers["X-Frame-Options"] = "DENY"
+    # Todo se sirve desde este origen: ni scripts, ni fuentes, ni conexiones fuera.
+    respuesta.headers["Content-Security-Policy"] = (
+        "default-src 'self'; img-src 'self' data:; "
+        "style-src 'self'; script-src 'self' 'unsafe-inline'; "
+        "form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+    )
+    return respuesta
 app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
 
@@ -263,7 +352,23 @@ async def _rate_limited(request: Request, exc: RateLimitExceeded):
 
 
 @app.get("/health")
-def health() -> dict:
+def health():
+    """Comprueba que el pool convierte de verdad, no solo que el proceso vive.
+
+    Un healthcheck que siempre dice que sí deja al contenedor roto en pie.
+    """
+    tmpdir = Path(tempfile.mkdtemp(prefix=TMP_PREFIX))
+    try:
+        sonda = tmpdir / "sonda.pdf"
+        sonda.write_bytes(_PDF_SONDA)
+        resultado = _run_conversion(sonda, "raw", [])
+        if resultado["metadata"]["page_count"] != 1:
+            raise ValueError("la conversión de prueba no devolvió una página")
+    except Exception:  # noqa: BLE001 - frontera del healthcheck
+        log.exception("healthcheck: la conversión de prueba falló")
+        return JSONResponse({"status": "degraded"}, status_code=503)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
     return {"status": "ok"}
 
 
@@ -337,7 +442,10 @@ def convert(
             source = tmpdir / f"{index}.pdf"
             try:
                 _save_upload(upload, source)
-                results.append((upload.filename, _run_conversion(source, mode, rules)))
+                with _plaza_de_conversion():
+                    results.append(
+                        (upload.filename, _run_conversion(source, mode, rules))
+                    )
             except ConvertError as exc:
                 if len(files) == 1:
                     return _error(request, str(exc), exc.status)

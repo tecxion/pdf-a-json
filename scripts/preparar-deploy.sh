@@ -49,6 +49,8 @@ MAX_FILES=10
 MAX_PAGES=500
 RATE_LIMIT=10/minute
 CONVERT_TIMEOUT_S=30
+MAX_REQUEST_MB=60
+MAX_CONCURRENTES=4
 
 # Identificación del titular en las páginas legales. Solo hace falta cambiarlas
 # si alojas tu propia instancia.

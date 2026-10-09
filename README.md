@@ -63,6 +63,8 @@ Tests:
 | `MAX_PAGES` | 500 | Páginas por documento |
 | `RATE_LIMIT` | `10/minute` | Peticiones por IP |
 | `CONVERT_TIMEOUT_S` | 30 | Segundos por fichero antes de cancelar |
+| `MAX_REQUEST_MB` | 60 | Tamaño de la petición entera, cortado antes de leer el cuerpo |
+| `MAX_CONCURRENTES` | 4 | Conversiones a la vez; por encima se responde 503 |
 
 El contador del rate limit vive en la memoria de cada worker de uvicorn, así que el límite
 real se multiplica por el número de workers. Con 1-2 workers es suficiente; para precisión,
