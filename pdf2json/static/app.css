@@ -557,3 +557,147 @@ a {
     transition: none !important;
   }
 }
+
+/* --- resultado ------------------------------------------------------------ */
+
+.resultado {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  border: 1px solid var(--border-hover);
+  border-radius: 24px;
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+}
+
+.resultado-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.resultado-cabecera h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.resultado-cabecera button.primary {
+  width: auto;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.8rem;
+}
+
+.resumen p {
+  margin: 0 0 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.resumen-auto {
+  padding: 0.6rem 0.85rem;
+  border-left: 2px solid var(--accent);
+  background: rgba(239, 68, 68, 0.06);
+  border-radius: 0 8px 8px 0;
+}
+
+.aviso {
+  color: var(--accent) !important;
+}
+
+.muestra,
+.json {
+  max-height: 18rem;
+  overflow: auto;
+  margin: 0;
+  padding: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.arbol {
+  max-height: 20rem;
+  overflow: auto;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.arbol li {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.arbol-nivel-2 {
+  padding-left: 1.25rem !important;
+}
+
+.arbol-nivel-3 {
+  padding-left: 2.5rem !important;
+}
+
+.arbol-titulo {
+  color: var(--foreground);
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.arbol-detalle {
+  margin-left: 0.6rem;
+  color: var(--text-dark);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.campos {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.campos th,
+.campos td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.campos th {
+  width: 12rem;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-weight: 400;
+}
+
+.campos td {
+  color: var(--foreground);
+  font-family: var(--font-mono);
+}
+
+.campos .sin-valor {
+  color: var(--text-dark);
+  font-style: italic;
+}
+
+.resultado details {
+  margin-top: 0.75rem;
+}
+
+.resultado summary {
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}

@@ -1,16 +1,19 @@
-// Descarga por fetch en vez de dejar que el navegador descargue la respuesta del POST.
+// Envío por fetch, previsualización del resultado y descarga desde el blob.
 //
-// Algunos navegadores, al recibir un attachment como respuesta a un POST, reintentan
-// la descarga con un GET sobre la misma URL. Aquí ese GET devuelve 405 y la descarga
-// se pierde, porque el JSON solo existe en la respuesta del POST: no se guarda nada.
-// Con el blob la descarga ocurre sin segunda petición.
+// La descarga no puede salir directamente de la respuesta del POST: algunos
+// navegadores reintentan con un GET sobre la misma URL, que aquí devuelve 405
+// porque el JSON solo existe en esa respuesta. Con el blob se descarga sin
+// segunda petición, y de paso se puede enseñar antes de guardarlo.
 //
-// Es mejora progresiva: sin JavaScript el formulario sigue enviándose de forma normal.
+// Es mejora progresiva: sin JavaScript el formulario se envía de forma normal.
 (function () {
   "use strict";
 
   var formulario = document.querySelector("form");
-  if (!formulario || typeof URL.createObjectURL !== "function") return;
+  var panel = document.getElementById("resultado");
+  if (!formulario || !panel || typeof URL.createObjectURL !== "function") return;
+
+  var pendiente = null; // { blob, nombre }
 
   function nombreDe(cabecera, porDefecto) {
     var coincidencia = /filename="([^"]+)"/.exec(cabecera || "");
@@ -31,6 +34,131 @@
     }, 60000);
   }
 
+  function elemento(etiqueta, clase, texto) {
+    var nodo = document.createElement(etiqueta);
+    if (clase) nodo.className = clase;
+    if (texto !== undefined) nodo.textContent = texto;
+    return nodo;
+  }
+
+  function resumirSecciones(secciones, lista, nivel) {
+    secciones.forEach(function (seccion) {
+      var fila = elemento("li", "arbol-nivel-" + Math.min(nivel, 3));
+      fila.appendChild(
+        elemento("span", "arbol-titulo", seccion.heading || "(sin título)")
+      );
+      var detalle = [];
+      if (seccion.pages && seccion.pages.length) {
+        detalle.push("pág. " + seccion.pages.join(", "));
+      }
+      if (seccion.tables && seccion.tables.length) {
+        detalle.push(seccion.tables.length + " tabla(s)");
+      }
+      if (detalle.length) {
+        fila.appendChild(elemento("span", "arbol-detalle", detalle.join(" · ")));
+      }
+      lista.appendChild(fila);
+      if (seccion.children && seccion.children.length) {
+        resumirSecciones(seccion.children, lista, nivel + 1);
+      }
+    });
+  }
+
+  function resumen(datos) {
+    var caja = elemento("div", "resumen");
+    var auto = datos.summary && datos.summary.auto;
+
+    if (auto) {
+      caja.appendChild(
+        elemento(
+          "p",
+          "resumen-auto",
+          "Modo elegido: " + auto.elegido + " — " + auto.motivo
+        )
+      );
+    }
+
+    if (datos.mode === "raw") {
+      caja.appendChild(elemento("p", null, datos.pages.length + " páginas extraídas."));
+      var muestra = (datos.pages[0] && datos.pages[0].text) || "";
+      caja.appendChild(elemento("pre", "muestra", muestra.slice(0, 900)));
+    } else if (datos.mode === "layout") {
+      caja.appendChild(
+        elemento("p", null, datos.summary.sections_found + " títulos detectados.")
+      );
+      var lista = elemento("ul", "arbol");
+      resumirSecciones(datos.sections, lista, 1);
+      caja.appendChild(lista);
+    } else if (datos.mode === "schema") {
+      var tabla = elemento("table", "campos");
+      Object.keys(datos.fields).forEach(function (nombre) {
+        var fila = elemento("tr");
+        fila.appendChild(elemento("th", null, nombre));
+        var valor = datos.fields[nombre];
+        fila.appendChild(
+          elemento(
+            "td",
+            valor === null ? "sin-valor" : null,
+            valor === null ? "sin coincidencia" : valor
+          )
+        );
+        tabla.appendChild(fila);
+      });
+      caja.appendChild(tabla);
+    }
+
+    var sinTexto = datos.summary && datos.summary.pages_without_text;
+    if (sinTexto && sinTexto.length) {
+      caja.appendChild(
+        elemento(
+          "p",
+          "aviso",
+          "Sin texto en " +
+            sinTexto.length +
+            " página(s): " +
+            sinTexto.join(", ") +
+            ". Probablemente estén escaneadas como imagen."
+        )
+      );
+    }
+    return caja;
+  }
+
+  function mostrar(blob, nombre, datos) {
+    pendiente = { blob: blob, nombre: nombre };
+    panel.textContent = "";
+    panel.hidden = false;
+
+    var cabecera = elemento("div", "resultado-cabecera");
+    cabecera.appendChild(elemento("h2", null, "Resultado"));
+    var boton = elemento("button", "primary", "Descargar " + nombre);
+    boton.type = "button";
+    boton.addEventListener("click", function () {
+      descargar(pendiente.blob, pendiente.nombre);
+    });
+    cabecera.appendChild(boton);
+    panel.appendChild(cabecera);
+
+    if (datos) {
+      panel.appendChild(resumen(datos));
+      var detalles = elemento("details");
+      detalles.appendChild(elemento("summary", null, "Ver el JSON completo"));
+      detalles.appendChild(elemento("pre", "json", JSON.stringify(datos, null, 2)));
+      panel.appendChild(detalles);
+    } else {
+      panel.appendChild(
+        elemento("p", null, "Varios ficheros: el ZIP lleva un JSON por cada uno.")
+      );
+    }
+    panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function fallo(mensaje) {
+    panel.textContent = "";
+    panel.hidden = false;
+    panel.appendChild(elemento("p", "error", mensaje));
+  }
+
   formulario.addEventListener("submit", function (evento) {
     evento.preventDefault();
 
@@ -38,25 +166,38 @@
     var textoOriginal = boton.textContent;
     boton.disabled = true;
     boton.textContent = "Convirtiendo…";
+    panel.hidden = true;
 
-    fetch(formulario.action, { method: "POST", body: new FormData(formulario) })
+    fetch(formulario.action, {
+      method: "POST",
+      body: new FormData(formulario),
+      headers: { Accept: "application/json" },
+    })
       .then(function (respuesta) {
-        if (!respuesta.ok) {
-          // Mismo resultado que sin JavaScript: se muestra la página de error.
-          return respuesta.text().then(function (html) {
-            document.documentElement.innerHTML = html;
-          });
-        }
         var nombre = nombreDe(
           respuesta.headers.get("content-disposition"),
           "pdf2json.json"
         );
+        var tipo = respuesta.headers.get("content-type") || "";
+
+        if (!respuesta.ok) {
+          return respuesta.json().then(function (cuerpo) {
+            fallo(cuerpo.error || "Error al convertir.");
+          });
+        }
+        if (tipo.indexOf("application/zip") === 0) {
+          return respuesta.blob().then(function (blob) {
+            mostrar(blob, nombre, null);
+          });
+        }
         return respuesta.blob().then(function (blob) {
-          descargar(blob, nombre);
+          return blob.text().then(function (texto) {
+            mostrar(blob, nombre, JSON.parse(texto));
+          });
         });
       })
       .catch(function (error) {
-        alert("No se pudo convertir: " + error.message);
+        fallo("No se pudo convertir: " + error.message);
       })
       .finally(function () {
         boton.disabled = false;

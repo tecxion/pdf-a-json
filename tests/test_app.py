@@ -744,3 +744,10 @@ def test_la_documentacion_de_la_api_esta_publicada(client):
     assert esquema.status_code == 200
     assert "/convert" in esquema.json()["paths"]
     assert client.get("/docs").status_code == 200
+
+
+def test_la_portada_trae_el_panel_de_resultado(client):
+    cuerpo = client.get("/").text
+
+    assert 'id="resultado"' in cuerpo
+    assert "/static/app.js" in cuerpo
