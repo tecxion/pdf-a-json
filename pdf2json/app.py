@@ -289,7 +289,21 @@ def _describe(exc: Exception) -> tuple[str, int]:
     return "Error inesperado al convertir el PDF.", 500
 
 
-def _error(request: Request, message: str, status: int) -> HTMLResponse:
+def _quiere_json(request: Request) -> bool:
+    """Un cliente de API pide JSON; un navegador pide HTML.
+
+    Sin esto, un script que recibe un 422 se encuentra una página entera de HTML
+    y no puede saber qué falló.
+    """
+    accept = request.headers.get("accept", "")
+    if "application/json" in accept:
+        return True
+    return "text/html" not in accept
+
+
+def _error(request: Request, message: str, status: int) -> Response:
+    if _quiere_json(request):
+        return JSONResponse({"error": message}, status_code=status)
     return templates.TemplateResponse(
         request, "error.html", {"message": message}, status_code=status
     )

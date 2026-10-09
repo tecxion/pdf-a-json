@@ -435,9 +435,10 @@ def test_los_mensajes_de_error_escapan_la_entrada_del_usuario(client, make_pdf):
     """El modo y el nombre de la regla se devuelven en el HTML de error: XSS si no."""
     path = make_pdf("uno.pdf", [[("texto", 11, False)]])
     ataque = "<script>alert(1)</script>"
+    navegador = {"accept": "text/html"}
 
     respuesta_modo = client.post(
-        "/convert", data={"mode": ataque}, files=[upload(path)]
+        "/convert", data={"mode": ataque}, files=[upload(path)], headers=navegador
     )
 
     assert respuesta_modo.status_code == 422
@@ -454,10 +455,27 @@ def test_los_mensajes_de_error_escapan_la_entrada_del_usuario(client, make_pdf):
             "rule_pattern": "(sin cerrar",
         },
         files=[upload(path)],
+        headers=navegador,
     )
 
     assert respuesta_regla.status_code == 422
     assert "<script>" not in respuesta_regla.text
+
+
+def test_el_error_en_json_no_se_puede_interpretar_como_html(client, make_pdf):
+    """Un payload JSON con nosniff no lo renderiza ningún navegador."""
+    path = make_pdf("uno.pdf", [[("texto", 11, False)]])
+
+    respuesta = client.post(
+        "/convert",
+        data={"mode": "<script>alert(1)</script>"},
+        files=[upload(path)],
+        headers={"accept": "application/json"},
+    )
+
+    assert respuesta.headers["content-type"].startswith("application/json")
+    assert respuesta.headers["x-content-type-options"] == "nosniff"
+    assert "<script>" in respuesta.json()["error"]  # dato, no marcado
 
 
 def test_la_pagina_carga_el_script_de_descarga(client):
@@ -681,3 +699,48 @@ def test_un_lote_con_un_pdf_escaneado_convierte_el_resto(client, make_pdf):
         assert errores[0]["filename"] == "escaneado.pdf"
         assert "escaneado como imagen" in errores[0]["error"]
     assert not tmp_dirs()
+
+
+def test_un_cliente_de_api_recibe_los_errores_en_json(client, tmp_path):
+    """Un script que recibe HTML no puede saber qué ha fallado."""
+    roto = tmp_path / "roto.pdf"
+    roto.write_bytes(b"no soy un pdf")
+
+    respuesta = client.post(
+        "/convert",
+        data={"mode": "raw"},
+        files=[upload(roto)],
+        headers={"accept": "application/json"},
+    )
+
+    assert respuesta.status_code == 422
+    assert respuesta.headers["content-type"].startswith("application/json")
+    assert "no es un PDF" in respuesta.json()["error"]
+
+
+def test_sin_cabecera_accept_tambien_responde_json(client):
+    """curl no manda Accept: text/html, así que no debería recibir una página."""
+    respuesta = client.post("/convert", data={"mode": "inventado"}, headers={"accept": "*/*"})
+
+    assert respuesta.status_code == 422
+    assert respuesta.json()["error"].startswith("Modo desconocido")
+
+
+def test_un_navegador_sigue_recibiendo_la_pagina_de_error(client):
+    respuesta = client.post(
+        "/convert",
+        data={"mode": "inventado"},
+        headers={"accept": "text/html,application/xhtml+xml"},
+    )
+
+    assert respuesta.status_code == 422
+    assert "text/html" in respuesta.headers["content-type"]
+    assert "No se pudo" in respuesta.text
+
+
+def test_la_documentacion_de_la_api_esta_publicada(client):
+    esquema = client.get("/openapi.json")
+
+    assert esquema.status_code == 200
+    assert "/convert" in esquema.json()["paths"]
+    assert client.get("/docs").status_code == 200

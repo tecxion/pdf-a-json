@@ -65,6 +65,33 @@ Tests:
 .venv/bin/pytest
 ```
 
+## Usarlo desde un script
+
+El mismo endpoint sirve para la web y para la API. Con `Accept: application/json`
+los errores llegan en JSON en vez de en una página HTML.
+
+```bash
+curl -sS -X POST https://tu-dominio/convert \
+  -H "Accept: application/json" \
+  -F "mode=auto" \
+  -F "files=@documento.pdf" \
+  -o salida.json
+```
+
+Modo campos, con reglas repetidas en el mismo orden (nombre, tipo, patrón):
+
+```bash
+curl -sS -X POST https://tu-dominio/convert \
+  -H "Accept: application/json" -F "mode=schema" -F "files=@ley.pdf" \
+  --form-string 'rule_name=numero' --form-string 'rule_kind=regex' \
+  --form-string 'rule_pattern=Ley\s+(\d+/\d{4})' \
+  -o campos.json
+```
+
+Usa `--form-string` para los patrones: `-F` interpreta `@` y `<` al principio del
+valor. Con varios ficheros la respuesta es un ZIP. La documentación OpenAPI está
+en `/docs`.
+
 ## Configuración
 
 | Variable | Defecto | Qué hace |
