@@ -256,3 +256,78 @@ def test_auto_elige_raw_si_no_hay_texto(make_pdf):
     assert out["mode"] == "raw"
     assert out["summary"]["auto"]["motivo"] == "el documento no tiene texto extraíble"
     assert out["summary"]["pages_without_text"] == [1, 2]
+
+
+def test_etiqueta_legal_separa_tipo_numero_y_epigrafe():
+    assert modes.etiqueta_legal("Artículo 12. Objeto y ámbito.") == {
+        "tipo": "artículo",
+        "numero": 12,
+        "epigrafe": "Objeto y ámbito",
+    }
+    assert modes.etiqueta_legal("CAPÍTULO IV") == {"tipo": "capítulo", "numero": 4}
+    assert modes.etiqueta_legal("TÍTULO IX") == {"tipo": "título", "numero": 9}
+
+
+def test_etiqueta_legal_ignora_los_titulos_que_no_lo_son():
+    assert modes.etiqueta_legal("Un título cualquiera") is None
+    assert modes.etiqueta_legal(None) is None
+    assert modes.etiqueta_legal("") is None
+
+
+def test_etiqueta_legal_admite_disposiciones_sin_numero():
+    etiqueta = modes.etiqueta_legal("Disposición final primera. Entrada en vigor.")
+
+    assert etiqueta["tipo"] == "disposición"
+    assert etiqueta["numero"] is None
+    assert etiqueta["epigrafe"] == "Entrada en vigor"
+
+
+def test_referencias_legales_sin_repetir_y_en_orden():
+    texto = "Según el artículo 5 y la Ley 12/2023, y otra vez el artículo 5 y el artículo 7."
+
+    assert modes.referencias_legales(texto) == [
+        "artículo 5",
+        "Ley 12/2023",
+        "artículo 7",
+    ]
+
+
+def test_referencias_legales_en_texto_sin_citas():
+    assert modes.referencias_legales("Un texto normal sin citas.") == []
+
+
+def test_layout_etiqueta_las_secciones_legales(make_pdf):
+    path = make_pdf(
+        "ley.pdf",
+        [
+            [
+                ("CAPÍTULO II", 16, True),
+                ("Artículo 7. Derechos.", 14, True),
+                ("Lo previsto en el artículo 3 y en la Ley 12/2023.", 11, False),
+            ]
+        ],
+    )
+    doc = extract.parse(path, with_tables=True)
+
+    out = modes.layout(doc)
+
+    capitulo = out["sections"][0]
+    assert capitulo["legal"] == {"tipo": "capítulo", "numero": 2}
+    articulo = capitulo["children"][0]
+    assert articulo["legal"]["tipo"] == "artículo"
+    assert articulo["legal"]["numero"] == 7
+    assert articulo["referencias"] == ["artículo 3", "Ley 12/2023"]
+    assert out["summary"]["secciones_legales"] == 2
+
+
+def test_layout_no_etiqueta_un_documento_que_no_es_legal(make_pdf):
+    path = make_pdf(
+        "informe.pdf",
+        [[("Resumen ejecutivo", 16, True), ("Todo ha ido bien.", 11, False)]],
+    )
+    doc = extract.parse(path, with_tables=True)
+
+    out = modes.layout(doc)
+
+    assert "legal" not in out["sections"][0]
+    assert out["summary"]["secciones_legales"] == 0

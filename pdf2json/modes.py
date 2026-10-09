@@ -46,6 +46,79 @@ def raw(doc: Doc) -> dict:
     return out
 
 
+_ROMANOS = {
+    "I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000,
+}
+
+_TIPO_LEGAL = regex.compile(
+    r"^(?P<tipo>T[ÍI]TULO|CAP[ÍI]TULO|SECCI[ÓO]N|LIBRO|ART[ÍI]CULO|DISPOSICI[ÓO]N)"
+    r"\s+(?P<resto>[^.\n]{0,60})",
+    regex.IGNORECASE,
+)
+
+_REFERENCIA = regex.compile(
+    r"(?:art[íi]culo\s+(?P<articulo>\d+(?:\.\d+)?)"
+    r"|(?P<norma>(?:Ley\s+Org[áa]nica|Ley|Real\s+Decreto(?:-ley)?)\s+\d+/\d{4}))",
+    regex.IGNORECASE,
+)
+
+
+def _numero_romano(texto: str) -> int | None:
+    texto = texto.upper()
+    if not texto or any(c not in _ROMANOS for c in texto):
+        return None
+    total = 0
+    for actual, siguiente in zip(texto, texto[1:] + " "):
+        valor = _ROMANOS[actual]
+        total += -valor if _ROMANOS.get(siguiente, 0) > valor else valor
+    return total
+
+
+def etiqueta_legal(heading: str | None) -> dict | None:
+    """Convierte "Artículo 12. Objeto." en datos: tipo, número y epígrafe.
+
+    Esa información ya estaba en el título detectado; hasta ahora se devolvía
+    como una cadena que el consumidor tenía que volver a parsear.
+    """
+    if not heading:
+        return None
+    coincidencia = _TIPO_LEGAL.match(heading.strip())
+    if coincidencia is None:
+        return None
+
+    tipo = coincidencia.group("tipo").upper()
+    tipo = {"TITULO": "TÍTULO", "CAPITULO": "CAPÍTULO", "SECCION": "SECCIÓN",
+            "ARTICULO": "ARTÍCULO", "DISPOSICION": "DISPOSICIÓN"}.get(tipo, tipo)
+    resto = (coincidencia.group("resto") or "").strip()
+
+    numero: int | None = None
+    arabigo = regex.match(r"(\d+)", resto)
+    if arabigo:
+        numero = int(arabigo.group(1))
+    else:
+        primera = resto.split()[0] if resto else ""
+        numero = _numero_romano(primera)
+
+    etiqueta = {"tipo": tipo.lower(), "numero": numero}
+    epigrafe = heading.split(".", 1)[1].strip(" .") if "." in heading else ""
+    if epigrafe:
+        etiqueta["epigrafe"] = epigrafe
+    return etiqueta
+
+
+def referencias_legales(texto: str) -> list[str]:
+    """Normas y artículos citados dentro de un texto, sin repetir y en orden."""
+    vistas: list[str] = []
+    for coincidencia in _REFERENCIA.finditer(texto):
+        if coincidencia.group("articulo"):
+            referencia = f"artículo {coincidencia.group('articulo')}"
+        else:
+            referencia = " ".join(coincidencia.group("norma").split())
+        if referencia not in vistas:
+            vistas.append(referencia)
+    return vistas
+
+
 def _legal_level(text: str) -> int | None:
     """Nivel forzado para texto legal español. Tiene prioridad sobre el tamaño de fuente."""
     if _LEGAL_LEVEL_1.match(text):
@@ -151,8 +224,19 @@ def layout(doc: Doc) -> dict:
             if target is not None:
                 target["tables"].append({"page": table.page, "rows": table.rows})
 
+    legales = 0
+    for seccion in _flatten(sections):
+        etiqueta = etiqueta_legal(seccion["heading"])
+        if etiqueta is not None:
+            seccion["legal"] = etiqueta
+            legales += 1
+        referencias = referencias_legales(seccion["text"])
+        if referencias:
+            seccion["referencias"] = referencias
+
     out["sections"] = sections
     out["summary"]["sections_found"] = headings_found
+    out["summary"]["secciones_legales"] = legales
     return out
 
 

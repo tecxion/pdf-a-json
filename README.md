@@ -10,6 +10,10 @@ el resultado. **El servidor no conserva ningún fichero.**
 | `auto` | Por defecto. Ejecuta `layout` y lo devuelve si encontró al menos 3 títulos; si no, devuelve `raw`. La decisión y su motivo van en `summary.auto` |
 | `raw` | Texto por página: `{metadata, pages:[{number, text, ocr_required}]}` |
 | `layout` | Secciones anidadas con títulos y tablas. Reconoce `CAPÍTULO`, `Artículo N`, `Disposición...` |
+
+En `layout`, una sección cuyo título sea legal gana `legal: {tipo, numero, epigrafe}`
+con el número ya resuelto, romano o arábigo, y `referencias` con las normas y
+artículos que cita su texto.
 | `schema` | Solo los campos que indiques, por regex o por etiqueta. Plantillas para Ley/BOE, factura y CV |
 
 Toda salida lleva `schema_version`, `mode`, `metadata` y `summary.pages_without_text`.

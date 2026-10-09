@@ -48,8 +48,16 @@
         elemento("span", "arbol-titulo", seccion.heading || "(sin título)")
       );
       var detalle = [];
+      if (seccion.legal) {
+        detalle.push(
+          seccion.legal.tipo + (seccion.legal.numero ? " " + seccion.legal.numero : "")
+        );
+      }
       if (seccion.pages && seccion.pages.length) {
         detalle.push("pág. " + seccion.pages.join(", "));
+      }
+      if (seccion.referencias && seccion.referencias.length) {
+        detalle.push("cita " + seccion.referencias.join(", "));
       }
       if (seccion.tables && seccion.tables.length) {
         detalle.push(seccion.tables.length + " tabla(s)");
